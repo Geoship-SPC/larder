@@ -324,7 +324,7 @@ function SchemaFieldInput({ prop, value, onChange }) {
 // ---------------------------------------------------------------------------
 // ComponentsPage
 // ---------------------------------------------------------------------------
-function ComponentsPage({ isActive }) {
+function ComponentsPage({ isActive, dirtyRef }) {
   const [components, setComponents] = React.useState([]);
   const [schemas, setSchemas]       = React.useState([]);
   const [selectedId, setSelectedId] = React.useState(null); // null | 'new' | number
@@ -332,7 +332,10 @@ function ComponentsPage({ isActive }) {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [uploading, setUploading] = React.useState(false);
+  const [isDirty, setIsDirty] = React.useState(false);
   const fileInputRef = React.useRef(null);
+
+  React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
 
   const selected = selectedId === 'new' ? 'new' : (components.find(c => c.id === selectedId) || null);
   const defaultSchema = schemas.find(s => s.is_default) || null;
@@ -349,15 +352,19 @@ function ComponentsPage({ isActive }) {
   React.useEffect(() => { if (isActive) load(); }, [isActive]);
 
   function selectComponent(c) {
+    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     setSelectedId(c.id);
     setForm({ name: c.name, description: c.description || '', schema_values: c.schema_values || {} });
     setError(null);
+    setIsDirty(false);
   }
 
   function newComponent() {
+    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     setSelectedId('new');
     setForm({ name: '', description: '', schema_values: {} });
     setError(null);
+    setIsDirty(false);
   }
 
   async function save() {
@@ -374,6 +381,7 @@ function ComponentsPage({ isActive }) {
         await apiFetch(`/components/${selectedId}`, { method: 'PUT', body: JSON.stringify(payload) });
         await load();
       }
+      setIsDirty(false);
     } catch (e) { setError(e.message); }
     setSaving(false);
   }
@@ -384,6 +392,7 @@ function ComponentsPage({ isActive }) {
       await apiFetch(`/components/${selectedId}`, { method: 'DELETE' });
       await load();
       setSelectedId(null);
+      setIsDirty(false);
     } catch (e) { alert(e.message); }
   }
 
@@ -448,7 +457,7 @@ function ComponentsPage({ isActive }) {
               <label>Name</label>
               <input
                 value={form.name}
-                onChange={e => setForm({ ...form, name: e.target.value })}
+                onChange={e => { setForm({ ...form, name: e.target.value }); setIsDirty(true); }}
                 className="geo-input"
                 placeholder="e.g. Portland Cement"
               />
@@ -457,7 +466,7 @@ function ComponentsPage({ isActive }) {
               <label>Description</label>
               <textarea
                 value={form.description}
-                onChange={e => setForm({ ...form, description: e.target.value })}
+                onChange={e => { setForm({ ...form, description: e.target.value }); setIsDirty(true); }}
                 className="geo-input"
                 rows={3}
                 placeholder="Optional description or notes"
@@ -479,7 +488,7 @@ function ComponentsPage({ isActive }) {
                     <SchemaFieldInput
                       prop={prop}
                       value={form.schema_values[prop.key]}
-                      onChange={v => setForm(f => ({ ...f, schema_values: { ...f.schema_values, [prop.key]: v } }))}
+                      onChange={v => { setForm(f => ({ ...f, schema_values: { ...f.schema_values, [prop.key]: v } })); setIsDirty(true); }}
                     />
                   </div>
                 ))}
@@ -490,7 +499,7 @@ function ComponentsPage({ isActive }) {
               <button onClick={save} disabled={saving || !form.name.trim()} className="btn btn-primary">
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              <button onClick={() => { setSelectedId(null); setError(null); }} className="btn btn-secondary">Cancel</button>
+              <button onClick={() => { setSelectedId(null); setError(null); setIsDirty(false); }} className="btn btn-secondary">Cancel</button>
               {selected !== 'new' && (
                 <button onClick={deleteComponent} className="btn btn-danger" style={{ marginLeft: 'auto' }}>Delete</button>
               )}
@@ -548,7 +557,7 @@ function ComponentsPage({ isActive }) {
 // ---------------------------------------------------------------------------
 // MaterialsPage
 // ---------------------------------------------------------------------------
-function MaterialsPage({ isActive }) {
+function MaterialsPage({ isActive, dirtyRef }) {
   const [materials, setMaterials] = React.useState([]);
   const [allComponents, setAllComponents] = React.useState([]);
   const [matSchemas, setMatSchemas]       = React.useState([]);
@@ -559,6 +568,9 @@ function MaterialsPage({ isActive }) {
   const [volume, setVolume] = React.useState('');
   const [volUnit, setVolUnit] = React.useState('gal');
   const [variantForm, setVariantForm] = React.useState(null);
+  const [isDirty, setIsDirty] = React.useState(false);
+
+  React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
 
   const selected = selectedId === 'new' ? 'new' : (materials.find(m => m.id === selectedId) || null);
   const defaultMatSchema = matSchemas.find(s => s.is_default) || null;
@@ -577,6 +589,7 @@ function MaterialsPage({ isActive }) {
   React.useEffect(() => { if (isActive) load(); }, [isActive]);
 
   function selectMaterial(m) {
+    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     setSelectedId(m.id);
     setForm({
       name: m.name,
@@ -589,18 +602,22 @@ function MaterialsPage({ isActive }) {
     setError(null);
     setVolume('');
     setVariantForm(null);
+    setIsDirty(false);
   }
 
   function newMaterial() {
+    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     setSelectedId('new');
     setForm({ name: '', description: '', density: '', components: [], schema_values: {}, variant_of: null });
     setError(null);
     setVolume('');
     setVariantForm(null);
+    setIsDirty(false);
   }
 
   function addComponentEntry() {
     setForm(f => ({ ...f, components: [...f.components, { component_id: '', ratio: '', is_variable: false, alternates: [] }] }));
+    setIsDirty(true);
   }
 
   function addAlternate(idx, compId) {
@@ -611,6 +628,7 @@ function MaterialsPage({ isActive }) {
       comps[idx] = { ...comps[idx], alternates: alts };
       return { ...f, components: comps };
     });
+    setIsDirty(true);
   }
 
   function removeAlternate(idx, compId) {
@@ -619,10 +637,12 @@ function MaterialsPage({ isActive }) {
       comps[idx] = { ...comps[idx], alternates: (comps[idx].alternates || []).filter(id => id !== compId) };
       return { ...f, components: comps };
     });
+    setIsDirty(true);
   }
 
   function removeComponentEntry(idx) {
     setForm(f => ({ ...f, components: f.components.filter((_, i) => i !== idx) }));
+    setIsDirty(true);
   }
 
   function updateEntry(idx, field, value) {
@@ -631,6 +651,7 @@ function MaterialsPage({ isActive }) {
       comps[idx] = { ...comps[idx], [field]: value };
       return { ...f, components: comps };
     });
+    setIsDirty(true);
   }
 
   const ratioTotal = form.components.reduce((sum, c) => sum + (parseFloat(c.ratio) || 0), 0);
@@ -668,6 +689,7 @@ function MaterialsPage({ isActive }) {
         await apiFetch(`/materials/${selectedId}`, { method: 'PUT', body: JSON.stringify(payload) });
         await load();
       }
+      setIsDirty(false);
     } catch (e) { setError(e.message); }
     setSaving(false);
   }
@@ -678,6 +700,7 @@ function MaterialsPage({ isActive }) {
       await apiFetch(`/materials/${selectedId}`, { method: 'DELETE' });
       await load();
       setSelectedId(null);
+      setIsDirty(false);
     } catch (e) { alert(e.message); }
   }
 
@@ -772,15 +795,15 @@ function MaterialsPage({ isActive }) {
             <div className="form-row cols-2" style={{ marginBottom: 4 }}>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Name</label>
-                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="geo-input" placeholder="e.g. Fiber Mix A" />
+                <input value={form.name} onChange={e => { setForm({ ...form, name: e.target.value }); setIsDirty(true); }} className="geo-input" placeholder="e.g. Fiber Mix A" />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Description</label>
-                <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="geo-input" rows={2} placeholder="Optional notes" />
+                <textarea value={form.description} onChange={e => { setForm({ ...form, description: e.target.value }); setIsDirty(true); }} className="geo-input" rows={2} placeholder="Optional notes" />
               </div>
               <div className="form-group">
                 <label>Density (g/mL)</label>
-                <input type="number" step="0.001" min="0" value={form.density} onChange={e => setForm({ ...form, density: e.target.value })} className="geo-input" placeholder="e.g. 1.5" />
+                <input type="number" step="0.001" min="0" value={form.density} onChange={e => { setForm({ ...form, density: e.target.value }); setIsDirty(true); }} className="geo-input" placeholder="e.g. 1.5" />
               </div>
             </div>
 
@@ -868,7 +891,7 @@ function MaterialsPage({ isActive }) {
               <button onClick={save} disabled={saving || !form.name.trim()} className="btn btn-primary">
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              <button onClick={() => { setSelectedId(null); setError(null); }} className="btn btn-secondary">Cancel</button>
+              <button onClick={() => { setSelectedId(null); setError(null); setIsDirty(false); }} className="btn btn-secondary">Cancel</button>
               {selected !== 'new' && (
                 <button onClick={deleteMaterial} className="btn btn-danger" style={{ marginLeft: 'auto' }}>Delete</button>
               )}
@@ -890,7 +913,7 @@ function MaterialsPage({ isActive }) {
                     <SchemaFieldInput
                       prop={prop}
                       value={form.schema_values[prop.key]}
-                      onChange={v => setForm(f => ({ ...f, schema_values: { ...f.schema_values, [prop.key]: v } }))}
+                      onChange={v => { setForm(f => ({ ...f, schema_values: { ...f.schema_values, [prop.key]: v } })); setIsDirty(true); }}
                     />
                   </div>
                 ))}
@@ -1677,6 +1700,8 @@ function App() {
   });
   const [user, setUser] = React.useState(null);
   const [helpOpen, setHelpOpen] = React.useState(false);
+  const componentsDirtyRef = React.useRef(false);
+  const materialsDirtyRef  = React.useRef(false);
 
   React.useEffect(() => {
     apiFetch('/me').then(setUser).catch(() => {});
@@ -1692,6 +1717,9 @@ function App() {
   }, []);
 
   function navigate(id) {
+    if (id !== page && (componentsDirtyRef.current || materialsDirtyRef.current)) {
+      if (!window.confirm('You have unsaved changes. Leave without saving?')) return;
+    }
     window.location.hash = '/' + id;
     setPage(id);
     setHelpOpen(false);
@@ -1739,9 +1767,9 @@ function App() {
 
       {TABS.map(t => (
         <div key={t.id} style={{ display: page === t.id ? '' : 'none' }}>
-          {t.id === 'components'        && <ComponentsPage       isActive={page === 'components'} />}
+          {t.id === 'components'        && <ComponentsPage       isActive={page === 'components'}        dirtyRef={componentsDirtyRef} />}
           {t.id === 'component-schemas' && <ComponentSchemasPage isActive={page === 'component-schemas'} />}
-          {t.id === 'materials'         && <MaterialsPage        isActive={page === 'materials'} />}
+          {t.id === 'materials'         && <MaterialsPage        isActive={page === 'materials'}         dirtyRef={materialsDirtyRef} />}
           {t.id === 'material-schemas'  && <MaterialSchemasPage  isActive={page === 'material-schemas'} />}
         </div>
       ))}
