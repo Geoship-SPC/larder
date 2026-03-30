@@ -26,6 +26,23 @@ class ComponentSchemaIn(BaseModel):
     properties: List[SchemaProperty] = []
 
 
+@router.post("/set-default/{schema_id}")
+def set_default(schema_id: int):
+    db = get_db()
+    if not db.component_schemas.find_one({"_id": schema_id}):
+        raise HTTPException(status_code=404, detail="Schema not found")
+    db.component_schemas.update_many({}, {"$set": {"is_default": False}})
+    db.component_schemas.update_one({"_id": schema_id}, {"$set": {"is_default": True}})
+    return {"ok": True}
+
+
+@router.delete("/default")
+def clear_default():
+    db = get_db()
+    db.component_schemas.update_many({}, {"$set": {"is_default": False}})
+    return {"ok": True}
+
+
 @router.get("/")
 def list_schemas():
     db = get_db()

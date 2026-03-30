@@ -166,7 +166,13 @@ const TABS = [
 // ---------------------------------------------------------------------------
 // MasterDetail
 // ---------------------------------------------------------------------------
-function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, emptyMsg, children }) {
+function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, emptyMsg, children, searchKeys = ['name'] }) {
+  const [query, setQuery] = React.useState('');
+  const q = query.toLowerCase();
+  const filtered = q
+    ? items.filter(item => searchKeys.some(k => String(item[k] || '').toLowerCase().includes(q)))
+    : items;
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, alignItems: 'start' }}>
       <div className="geo-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -174,8 +180,21 @@ function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, e
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--geo-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</span>
           <button className="btn btn-primary" style={{ padding: '3px 10px', fontSize: 11 }} onClick={onNew}>+ New</button>
         </div>
-        {items.length === 0 && <div className="empty" style={{ fontSize: 12, padding: '16px' }}>No items yet.</div>}
-        {items.map(item => (
+        <div style={{ padding: '7px 10px', borderBottom: '1px solid var(--geo-border-light)' }}>
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search…"
+            className="geo-input"
+            style={{ fontSize: 12, padding: '4px 8px' }}
+          />
+        </div>
+        {filtered.length === 0 && (
+          <div className="empty" style={{ fontSize: 12, padding: '16px' }}>
+            {q ? 'No matches.' : 'No items yet.'}
+          </div>
+        )}
+        {filtered.map(item => (
           <div
             key={item.id}
             onClick={() => onSelect(item)}
@@ -200,35 +219,107 @@ function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, e
 }
 
 // ---------------------------------------------------------------------------
+// SchemaFieldInput — renders the right input for a schema property type
+// ---------------------------------------------------------------------------
+function SchemaFieldInput({ prop, value, onChange }) {
+  if (prop.type === 'text') {
+    return <input value={value || ''} onChange={e => onChange(e.target.value)} className="geo-input" placeholder={prop.required ? 'Required' : ''} />;
+  }
+  if (prop.type === 'number') {
+    return (
+      <div style={{ position: 'relative' }}>
+        <input type="number" value={value ?? ''} onChange={e => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+          className="geo-input" style={prop.unit ? { paddingRight: 40 } : {}} />
+        {prop.unit && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--geo-text-muted)', pointerEvents: 'none' }}>{prop.unit}</span>}
+      </div>
+    );
+  }
+  if (prop.type === 'boolean') {
+    return (
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+        <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} style={{ width: 'auto' }} />
+        {value ? 'Pass' : 'Fail'}
+      </label>
+    );
+  }
+  if (prop.type === 'scale') {
+    const max = prop.scale_max || 5;
+    return (
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {Array.from({ length: max }, (_, i) => i + 1).map(n => (
+          <button key={n} type="button" onClick={() => onChange(n)} style={{
+            width: 32, height: 32, borderRadius: 6,
+            border: '1px solid var(--geo-border-light)',
+            background: value === n ? 'var(--geo-forest)' : 'var(--geo-white)',
+            color: value === n ? 'var(--geo-ceramic)' : 'var(--geo-text-primary)',
+            cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          }}>{n}</button>
+        ))}
+      </div>
+    );
+  }
+  if (prop.type === 'select') {
+    return (
+      <select value={value || ''} onChange={e => onChange(e.target.value)} className="geo-input">
+        <option value="">— Select —</option>
+        {(prop.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    );
+  }
+  if (prop.type === 'multiselect') {
+    const sel = Array.isArray(value) ? value : [];
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {(prop.options || []).map(opt => (
+          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={sel.includes(opt)}
+              onChange={e => onChange(e.target.checked ? [...sel, opt] : sel.filter(s => s !== opt))}
+              style={{ width: 'auto' }} />
+            {opt}
+          </label>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // ComponentsPage
 // ---------------------------------------------------------------------------
 function ComponentsPage({ isActive }) {
   const [components, setComponents] = React.useState([]);
+  const [schemas, setSchemas]       = React.useState([]);
   const [selectedId, setSelectedId] = React.useState(null); // null | 'new' | number
-  const [form, setForm] = React.useState({ name: '', description: '' });
+  const [form, setForm] = React.useState({ name: '', description: '', schema_values: {} });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [uploading, setUploading] = React.useState(false);
   const fileInputRef = React.useRef(null);
 
   const selected = selectedId === 'new' ? 'new' : (components.find(c => c.id === selectedId) || null);
+  const defaultSchema = schemas.find(s => s.is_default) || null;
 
   async function load() {
-    const data = await apiFetch('/components/');
-    setComponents(data);
+    const [compData, schemaData] = await Promise.all([
+      apiFetch('/components/'),
+      apiFetch('/component-schemas/'),
+    ]);
+    setComponents(compData);
+    setSchemas(schemaData);
   }
 
   React.useEffect(() => { if (isActive) load(); }, [isActive]);
 
   function selectComponent(c) {
     setSelectedId(c.id);
-    setForm({ name: c.name, description: c.description || '' });
+    setForm({ name: c.name, description: c.description || '', schema_values: c.schema_values || {} });
     setError(null);
   }
 
   function newComponent() {
     setSelectedId('new');
-    setForm({ name: '', description: '' });
+    setForm({ name: '', description: '', schema_values: {} });
     setError(null);
   }
 
@@ -236,12 +327,12 @@ function ComponentsPage({ isActive }) {
     setSaving(true);
     setError(null);
     try {
-      const payload = { name: form.name.trim(), description: form.description.trim() || null };
+      const payload = { name: form.name.trim(), description: form.description.trim() || null, schema_values: form.schema_values };
       if (selectedId === 'new') {
         const created = await apiFetch('/components/', { method: 'POST', body: JSON.stringify(payload) });
         await load();
         setSelectedId(created.id);
-        setForm({ name: created.name, description: created.description || '' });
+        setForm({ name: created.name, description: created.description || '', schema_values: created.schema_values || {} });
       } else {
         await apiFetch(`/components/${selectedId}`, { method: 'PUT', body: JSON.stringify(payload) });
         await load();
@@ -290,6 +381,7 @@ function ComponentsPage({ isActive }) {
       <MasterDetail
         title="Components"
         items={components}
+        searchKeys={['name', 'description']}
         selectedId={selectedId !== 'new' ? selectedId : null}
         onSelect={selectComponent}
         onNew={newComponent}
@@ -334,6 +426,28 @@ function ComponentsPage({ isActive }) {
                 placeholder="Optional description or notes"
               />
             </div>
+
+            {defaultSchema && (
+              <div style={{ marginTop: 20 }}>
+                <div className="geo-section-label" style={{ marginTop: 0 }}>
+                  {defaultSchema.name}
+                  {defaultSchema.description && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>— {defaultSchema.description}</span>}
+                </div>
+                {(defaultSchema.properties || []).map(prop => (
+                  <div key={prop.key} className="form-group">
+                    <label style={{ display: 'flex', gap: 4 }}>
+                      {prop.label}
+                      {prop.required && <span style={{ color: '#b84a3a', fontWeight: 700 }}>*</span>}
+                    </label>
+                    <SchemaFieldInput
+                      prop={prop}
+                      value={form.schema_values[prop.key]}
+                      onChange={v => setForm(f => ({ ...f, schema_values: { ...f.schema_values, [prop.key]: v } }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
               <button onClick={save} disabled={saving || !form.name.trim()} className="btn btn-primary">
@@ -509,6 +623,7 @@ function MaterialsPage({ isActive }) {
       <MasterDetail
         title="Materials"
         items={materials}
+        searchKeys={['name', 'description']}
         selectedId={selectedId !== 'new' ? selectedId : null}
         onSelect={selectMaterial}
         onNew={newMaterial}
@@ -767,7 +882,10 @@ function ComponentSchemasPage({ isActive }) {
               background: selected?.id === s.id ? 'var(--geo-sand)' : 'transparent',
               border: '1px solid ' + (selected?.id === s.id ? 'var(--geo-border-light)' : 'transparent'),
             }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+              <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {s.name}
+                {s.is_default && <span style={{ fontSize: 10, background: 'rgba(59,78,61,0.15)', color: 'var(--geo-forest)', borderRadius: 99, padding: '1px 7px', fontWeight: 600 }}>default</span>}
+              </div>
               <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 2 }}>
                 {s.properties?.length || 0} {s.properties?.length === 1 ? 'property' : 'properties'}
               </div>
@@ -786,6 +904,19 @@ function ComponentSchemasPage({ isActive }) {
               <h2 style={{ margin: 0 }}>{selected ? 'Edit Schema' : 'New Schema'}</h2>
               <div style={{ display: 'flex', gap: 8 }}>
                 {selected && <button className="btn btn-danger" onClick={handleDelete}>Delete</button>}
+                {selected && (
+                  selected.is_default
+                    ? <button className="btn btn-secondary" onClick={async () => {
+                        await apiFetch('/component-schemas/default', { method: 'DELETE' });
+                        setSchemas(prev => prev.map(s => ({ ...s, is_default: false })));
+                        setSelected(s => ({ ...s, is_default: false }));
+                      }}>★ Remove Default</button>
+                    : <button className="btn btn-secondary" onClick={async () => {
+                        await apiFetch(`/component-schemas/set-default/${selected.id}`, { method: 'POST' });
+                        setSchemas(prev => prev.map(s => ({ ...s, is_default: s.id === selected.id })));
+                        setSelected(s => ({ ...s, is_default: true }));
+                      }}>☆ Set as Default</button>
+                )}
                 <button className="geo-btn" onClick={handleSave} disabled={saving}>
                   {saving ? 'Saving…' : 'Save'}
                 </button>
