@@ -248,10 +248,6 @@ function ComponentsPage({ isActive }) {
 
   return (
     <div className="geo-container" style={{ paddingTop: '1rem' }}>
-      <div className="geo-page-header" style={{ marginBottom: '1.5rem' }}>
-        <h1>Components</h1>
-        <p>Primitive material components used in recipes</p>
-      </div>
       <MasterDetail
         title="Components"
         items={components}
@@ -468,10 +464,6 @@ function MaterialsPage({ isActive }) {
 
   return (
     <div className="geo-container" style={{ paddingTop: '1rem' }}>
-      <div className="geo-page-header" style={{ marginBottom: '1.5rem' }}>
-        <h1>Materials</h1>
-        <p>Configure material recipes from base components</p>
-      </div>
       <MasterDetail
         title="Materials"
         items={materials}
@@ -700,23 +692,42 @@ function App() {
 
   return (
     <div>
-      <div className="geo-rainbow" />
-      <nav className="geo-nav">
-        <div className="geo-nav-left">
-          <span className="geo-nav-brand">🧱 Larder</span>
-        </div>
-        <div className="geo-nav-right">
-          {user && user.name && <span className="geo-user-name">{user.name}</span>}
-          {user && user.role && <span className="geo-role-badge">{user.role}</span>}
-        </div>
-      </nav>
+      {/* Fixed header: rainbow + nav */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ height: 3, background: 'linear-gradient(90deg,#ff6b6b,#ffa94d,#ffd43b,#69db7c,#4dabf7,#9775fa,#f06595)' }} />
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 2rem', background: '#505951', borderBottom: '1px solid #3b4e3d' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <a href="http://10.0.1.11/brigade" style={{ color: '#8a9a8a', textDecoration: 'none', fontSize: '0.85rem' }}>← The Kitchen</a>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {user && user.name && <>
+              <span style={{ fontSize: '0.85rem', color: '#899a8a' }}>{user.name}</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 500, background: 'rgba(137,154,138,0.2)', color: '#899a8a', padding: '0.2rem 0.55rem', borderRadius: 6, border: '1px solid rgba(137,154,138,0.3)', textTransform: 'capitalize' }}>{user.role}</span>
+              {user.role === 'admin' && <>
+                <a href="http://10.0.1.11/maitred/admin" style={{ color: '#8a9a8a', textDecoration: 'none', fontSize: '0.85rem', padding: '0.35rem 0.75rem' }}>Users</a>
+                <a href="http://10.0.1.11/brigade/health/dashboard" style={{ color: '#8a9a8a', textDecoration: 'none', fontSize: '0.85rem', padding: '0.35rem 0.75rem' }}>Health</a>
+              </>}
+              <a href="http://10.0.1.11/maitred/profile" style={{ color: '#8a9a8a', textDecoration: 'none', fontSize: '0.85rem', padding: '0.35rem 0.75rem' }}>Profile</a>
+              <a href="http://10.0.1.11/maitred/logout" style={{ color: '#8a9a8a', textDecoration: 'none', fontSize: '0.85rem', padding: '0.35rem 0.75rem' }}>Sign Out</a>
+            </>}
+          </div>
+        </header>
+      </div>
+      <div style={{ height: 52 }} />
 
-      <div className="app-tab-bar" style={{ marginTop: '3.25rem' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => navigate(t.id)} className={page === t.id ? 'app-tab active' : 'app-tab'}>
-            {t.label}
-          </button>
-        ))}
+      {/* App title + tab bar */}
+      <div className="geo-container" style={{ paddingTop: '2rem' }}>
+        <div className="geo-page-header">
+          <h1>🧱 Larder</h1>
+          <p>Material component and recipe manager</p>
+        </div>
+        <nav className="app-tab-bar">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => navigate(t.id)} className={page === t.id ? 'app-tab active' : 'app-tab'}>
+              {t.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
       {TABS.map(t => (
