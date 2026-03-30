@@ -13,6 +13,7 @@ router = APIRouter()
 class ComponentIn(BaseModel):
     name: str
     description: Optional[str] = None
+    category: Optional[str] = None
     schema_values: Optional[dict] = None
 
 
@@ -31,6 +32,7 @@ def create_component(payload: ComponentIn):
         "_id":          next_id("material_components"),
         "name":         payload.name,
         "description":  payload.description,
+        "category":     payload.category or None,
         "schema_values": payload.schema_values or {},
         "documents":    [],
         "created_at":   datetime.utcnow(),
@@ -50,7 +52,7 @@ def update_component(component_id: int, payload: ComponentIn):
         raise HTTPException(status_code=409, detail=f"Component '{payload.name}' already exists")
     db.material_components.update_one(
         {"_id": component_id},
-        {"$set": {"name": payload.name, "description": payload.description, "schema_values": payload.schema_values or {}}},
+        {"$set": {"name": payload.name, "description": payload.description, "category": payload.category or None, "schema_values": payload.schema_values or {}}},
     )
     return doc_to_dict(db.material_components.find_one({"_id": component_id}))
 

@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+import json as _json
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.database import get_db, next_id, doc_to_dict
@@ -64,9 +65,10 @@ def create_material(payload: MaterialIn):
 
 
 @router.put("/{material_id}")
-def update_material(material_id: int, payload: MaterialIn):
+def update_material(material_id: int, payload: MaterialIn, request: Request):
     db = get_db()
-    if not db.materials.find_one({"_id": material_id}):
+    existing = db.materials.find_one({"_id": material_id})
+    if not existing:
         raise HTTPException(status_code=404, detail="Material not found")
     clash = db.materials.find_one({"name": payload.name, "_id": {"$ne": material_id}})
     if clash:
@@ -83,7 +85,31 @@ def update_material(material_id: int, payload: MaterialIn):
             "variant_of":    payload.variant_of,
         }},
     )
-    return doc_to_dict(db.materials.find_one({"_id": material_id}))
+    updated = db.materials.find_one({"_id": material_id})
+    saved_by = None
+    try:
+        header = request.headers.get("X-Auth-User")
+        if header:
+            saved_by = _json.loads(header).get("name")
+    except Exception:
+        pass
+    db.material_versions.insert_one({
+        "_id":         next_id("material_versions"),
+        "material_id": material_id,
+        "saved_at":    datetime.utcnow(),
+        "saved_by":    saved_by,
+        "data":        doc_to_dict(updated),
+    })
+    return doc_to_dict(updated)
+
+
+@router.get("/{material_id}/versions")
+def list_versions(material_id: int):
+    db = get_db()
+    if not db.materials.find_one({"_id": material_id}):
+        raise HTTPException(status_code=404, detail="Material not found")
+    versions = list(db.material_versions.find({"material_id": material_id}).sort("saved_at", -1).limit(20))
+    return [doc_to_dict(v) for v in versions]
 
 
 @router.delete("/{material_id}")

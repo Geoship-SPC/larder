@@ -203,7 +203,7 @@ const TABS = [
 // ---------------------------------------------------------------------------
 // MasterDetail
 // ---------------------------------------------------------------------------
-function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, emptyMsg, children, searchKeys = ['name'] }) {
+function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, emptyMsg, children, searchKeys = ['name'], listHeader }) {
   const [query, setQuery] = React.useState('');
   const q = query.toLowerCase();
   const filtered = q
@@ -226,6 +226,7 @@ function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, e
             style={{ fontSize: 12, padding: '4px 8px' }}
           />
         </div>
+        {listHeader}
         {filtered.length === 0 && (
           <div className="empty" style={{ fontSize: 12, padding: '16px' }}>
             {q ? 'No matches.' : 'No items yet.'}
@@ -328,17 +329,20 @@ function ComponentsPage({ isActive, dirtyRef }) {
   const [components, setComponents] = React.useState([]);
   const [schemas, setSchemas]       = React.useState([]);
   const [selectedId, setSelectedId] = React.useState(null); // null | 'new' | number
-  const [form, setForm] = React.useState({ name: '', description: '', schema_values: {} });
+  const [form, setForm] = React.useState({ name: '', description: '', category: '', schema_values: {} });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [uploading, setUploading] = React.useState(false);
   const [isDirty, setIsDirty] = React.useState(false);
+  const [selectedCategory, setSelectedCategory] = React.useState(null);
   const fileInputRef = React.useRef(null);
 
   React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
 
   const selected = selectedId === 'new' ? 'new' : (components.find(c => c.id === selectedId) || null);
   const defaultSchema = schemas.find(s => s.is_default) || null;
+  const allCategories = [...new Set(components.map(c => c.category).filter(Boolean))].sort();
+  const filteredComponents = selectedCategory ? components.filter(c => c.category === selectedCategory) : components;
 
   async function load() {
     const [compData, schemaData] = await Promise.all([
@@ -354,7 +358,7 @@ function ComponentsPage({ isActive, dirtyRef }) {
   function selectComponent(c) {
     if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     setSelectedId(c.id);
-    setForm({ name: c.name, description: c.description || '', schema_values: c.schema_values || {} });
+    setForm({ name: c.name, description: c.description || '', category: c.category || '', schema_values: c.schema_values || {} });
     setError(null);
     setIsDirty(false);
   }
@@ -362,7 +366,7 @@ function ComponentsPage({ isActive, dirtyRef }) {
   function newComponent() {
     if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     setSelectedId('new');
-    setForm({ name: '', description: '', schema_values: {} });
+    setForm({ name: '', description: '', category: '', schema_values: {} });
     setError(null);
     setIsDirty(false);
   }
@@ -371,12 +375,12 @@ function ComponentsPage({ isActive, dirtyRef }) {
     setSaving(true);
     setError(null);
     try {
-      const payload = { name: form.name.trim(), description: form.description.trim() || null, schema_values: form.schema_values };
+      const payload = { name: form.name.trim(), description: form.description.trim() || null, category: form.category.trim() || null, schema_values: form.schema_values };
       if (selectedId === 'new') {
         const created = await apiFetch('/components/', { method: 'POST', body: JSON.stringify(payload) });
         await load();
         setSelectedId(created.id);
-        setForm({ name: created.name, description: created.description || '', schema_values: created.schema_values || {} });
+        setForm({ name: created.name, description: created.description || '', category: created.category || '', schema_values: created.schema_values || {} });
       } else {
         await apiFetch(`/components/${selectedId}`, { method: 'PUT', body: JSON.stringify(payload) });
         await load();
@@ -426,14 +430,32 @@ function ComponentsPage({ isActive, dirtyRef }) {
     <div className="geo-container" style={{ paddingTop: '1rem' }}>
       <MasterDetail
         title="Components"
-        items={components}
-        searchKeys={['name', 'description']}
+        items={filteredComponents}
+        searchKeys={['name', 'description', 'category']}
         selectedId={selectedId !== 'new' ? selectedId : null}
         onSelect={selectComponent}
         onNew={newComponent}
+        listHeader={allCategories.length > 0 ? (
+          <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--geo-border-light)', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            <button
+              onClick={() => setSelectedCategory(null)}
+              style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, border: '1px solid var(--geo-border-light)', background: selectedCategory === null ? 'var(--geo-forest)' : 'transparent', color: selectedCategory === null ? 'white' : 'var(--geo-text-muted)', cursor: 'pointer' }}
+            >All</button>
+            {allCategories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, border: '1px solid var(--geo-border-light)', background: selectedCategory === cat ? 'var(--geo-forest)' : 'transparent', color: selectedCategory === cat ? 'white' : 'var(--geo-text-muted)', cursor: 'pointer' }}
+              >{cat}</button>
+            ))}
+          </div>
+        ) : null}
         renderItem={c => (
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--geo-text-primary)' }}>{c.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--geo-text-primary)' }}>{c.name}</span>
+              {c.category && <span style={{ fontSize: 10, background: 'var(--geo-ceramic)', color: 'white', borderRadius: 8, padding: '1px 6px', flexShrink: 0 }}>{c.category}</span>}
+            </div>
             {c.description && (
               <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.description}</div>
             )}
@@ -471,6 +493,19 @@ function ComponentsPage({ isActive, dirtyRef }) {
                 rows={3}
                 placeholder="Optional description or notes"
               />
+            </div>
+            <div className="form-group">
+              <label>Category</label>
+              <input
+                list="component-categories"
+                value={form.category}
+                onChange={e => { setForm({ ...form, category: e.target.value }); setIsDirty(true); }}
+                className="geo-input"
+                placeholder="e.g. Binder, Aggregate, Pigment"
+              />
+              <datalist id="component-categories">
+                {allCategories.map(cat => <option key={cat} value={cat} />)}
+              </datalist>
             </div>
 
             {defaultSchema && (
@@ -555,6 +590,43 @@ function ComponentsPage({ isActive, dirtyRef }) {
 }
 
 // ---------------------------------------------------------------------------
+// VersionRow
+// ---------------------------------------------------------------------------
+function VersionRow({ v, label, allComponents, onRestore }) {
+  const [open, setOpen] = React.useState(false);
+  const d = v.data || {};
+  return (
+    <div style={{ borderBottom: '1px solid var(--geo-border-light)', padding: '8px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--geo-forest)', padding: 0, textDecoration: 'underline', flexShrink: 0 }}
+        >{open ? '▲ hide' : '▼ details'}</button>
+        <span style={{ fontSize: 12, color: 'var(--geo-text-primary)', flex: 1 }}>{label}</span>
+        {v.saved_by && <span style={{ fontSize: 11, color: 'var(--geo-text-muted)', flexShrink: 0 }}>by {v.saved_by}</span>}
+        <button onClick={() => onRestore(v)} className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}>Restore</button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 6, fontSize: 12, background: 'var(--geo-sand)', borderRadius: 6, padding: '8px 12px' }}>
+          {d.density != null && <div><strong>Density:</strong> {d.density} g/mL</div>}
+          {(d.components || []).length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <strong>Components:</strong>
+              <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                {(d.components || []).map((c, i) => {
+                  const comp = allComponents.find(x => x.id === c.component_id);
+                  return <li key={i} style={{ listStyle: 'disc' }}>{comp ? comp.name : `#${c.component_id}`} — {c.ratio}%</li>;
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // MaterialsPage
 // ---------------------------------------------------------------------------
 function MaterialsPage({ isActive, dirtyRef }) {
@@ -569,6 +641,9 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const [volUnit, setVolUnit] = React.useState('gal');
   const [variantForm, setVariantForm] = React.useState(null);
   const [isDirty, setIsDirty] = React.useState(false);
+  const [versions, setVersions] = React.useState([]);
+  const [versionsOpen, setVersionsOpen] = React.useState(false);
+  const [versionsLoading, setVersionsLoading] = React.useState(false);
 
   React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
 
@@ -603,6 +678,8 @@ function MaterialsPage({ isActive, dirtyRef }) {
     setVolume('');
     setVariantForm(null);
     setIsDirty(false);
+    setVersions([]);
+    setVersionsOpen(false);
   }
 
   function newMaterial() {
@@ -613,6 +690,30 @@ function MaterialsPage({ isActive, dirtyRef }) {
     setVolume('');
     setVariantForm(null);
     setIsDirty(false);
+    setVersions([]);
+    setVersionsOpen(false);
+  }
+
+  async function loadVersions(matId) {
+    setVersionsLoading(true);
+    try {
+      const data = await apiFetch(`/materials/${matId}/versions`);
+      setVersions(data);
+    } catch (e) { /* ignore */ }
+    setVersionsLoading(false);
+  }
+
+  function restoreVersion(v) {
+    const d = v.data || {};
+    setForm({
+      name:         d.name || '',
+      description:  d.description || '',
+      density:      d.density != null ? String(d.density) : '',
+      components:   (d.components || []).map(c => ({ component_id: String(c.component_id), ratio: String(c.ratio), is_variable: c.is_variable || false, alternates: c.alternates || [] })),
+      schema_values: d.schema_values || {},
+      variant_of:   d.variant_of || null,
+    });
+    setIsDirty(true);
   }
 
   function addComponentEntry() {
@@ -747,6 +848,70 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const totalMass = (volMl != null && !isNaN(densityNum) && densityNum > 0)
     ? volMl * densityNum
     : null;
+
+  function printRecipeCard() {
+    if (!savedMat) return;
+    const m = savedMat;
+    const compRows = (m.components || []).map(entry => {
+      const comp = allComponents.find(c => c.id === entry.component_id);
+      const name = comp ? comp.name : `Component #${entry.component_id}`;
+      const note = entry.is_variable ? '<em>variable</em>' : '';
+      return `<tr><td>${name}</td><td style="text-align:right">${entry.ratio}%</td><td>${note}</td></tr>`;
+    }).join('');
+
+    const schemaRows = defaultMatSchema
+      ? (defaultMatSchema.properties || [])
+          .filter(p => m.schema_values && m.schema_values[p.key] != null)
+          .map(p => {
+            const val = m.schema_values[p.key];
+            const display = Array.isArray(val) ? val.join(', ') : String(val);
+            return `<tr><td>${p.label}${p.unit ? ` (${p.unit})` : ''}</td><td>${display}</td></tr>`;
+          }).join('')
+      : '';
+
+    const variantOfName = m.variant_of ? ((materials.find(x => x.id === m.variant_of) || {}).name || `#${m.variant_of}`) : null;
+    const childVariants = materials.filter(v => v.variant_of === m.id);
+
+    const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Recipe Card — ${m.name}</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 680px; margin: 40px auto; color: #222; line-height: 1.5; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #777; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 28px 0 10px; }
+  p.meta { font-size: 13px; color: #555; margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  th { background: #f5f5f5; text-align: left; padding: 5px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; }
+  td { padding: 6px 10px; border-top: 1px solid #eee; vertical-align: top; }
+  .print-btn { margin-bottom: 24px; padding: 8px 20px; background: #2d5a27; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  .footer { font-size: 11px; color: #aaa; margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px; }
+  @media print { .print-btn { display: none; } body { margin: 20px; } }
+</style>
+</head><body>
+<button class="print-btn" onclick="window.print()">🖨 Print</button>
+<h1>${m.name}</h1>
+${m.description ? `<p class="meta">${m.description}</p>` : ''}
+${m.density != null ? `<p class="meta">Density: <strong>${m.density} g/mL</strong></p>` : ''}
+${variantOfName ? `<p class="meta">Variant of: <strong>${variantOfName}</strong></p>` : ''}
+
+${compRows ? `<h2>Components</h2>
+<table>
+  <thead><tr><th>Component</th><th style="text-align:right">Ratio</th><th>Notes</th></tr></thead>
+  <tbody>${compRows}</tbody>
+</table>` : ''}
+
+${schemaRows ? `<h2>${defaultMatSchema ? defaultMatSchema.name : 'Properties'}</h2>
+<table><tbody>${schemaRows}</tbody></table>` : ''}
+
+${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:0;padding-left:20px">${childVariants.map(v => `<li>${v.name}</li>`).join('')}</ul>` : ''}
+
+<div class="footer">Generated ${new Date().toLocaleString()} &nbsp;·&nbsp; Larder</div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); }
+  }
 
   return (
     <div className="geo-container" style={{ paddingTop: '1rem' }}>
@@ -887,11 +1052,14 @@ function MaterialsPage({ isActive, dirtyRef }) {
               + Add Component
             </button>
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={save} disabled={saving || !form.name.trim()} className="btn btn-primary">
                 {saving ? 'Saving…' : 'Save'}
               </button>
               <button onClick={() => { setSelectedId(null); setError(null); setIsDirty(false); }} className="btn btn-secondary">Cancel</button>
+              {savedMat && (
+                <button onClick={printRecipeCard} className="btn btn-secondary" style={{ fontSize: 12 }}>🖨 Recipe Card</button>
+              )}
               {selected !== 'new' && (
                 <button onClick={deleteMaterial} className="btn btn-danger" style={{ marginLeft: 'auto' }}>Delete</button>
               )}
@@ -1069,6 +1237,36 @@ function MaterialsPage({ isActive, dirtyRef }) {
                     className="btn btn-secondary"
                     style={{ fontSize: 12, marginTop: 10 }}
                   >+ New Variant</button>
+                )}
+              </div>
+            )}
+
+            {/* Version History */}
+            {savedMat && (
+              <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--geo-border-light)' }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => {
+                    const next = !versionsOpen;
+                    setVersionsOpen(next);
+                    if (next && versions.length === 0) loadVersions(savedMat.id);
+                  }}
+                >
+                  <div className="geo-section-label" style={{ marginTop: 0 }}>Version History</div>
+                  <span style={{ fontSize: 12, color: 'var(--geo-forest)' }}>{versionsOpen ? '▲ collapse' : '▼ expand'}</span>
+                </div>
+                {versionsOpen && (
+                  <div style={{ marginTop: 8 }}>
+                    {versionsLoading && <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', padding: '8px 0' }}>Loading…</div>}
+                    {!versionsLoading && versions.length === 0 && (
+                      <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No saved versions yet. Versions are created each time you save changes.</div>
+                    )}
+                    {versions.map((v, i) => {
+                      const ts = new Date(v.saved_at);
+                      const label = isNaN(ts.getTime()) ? v.saved_at : ts.toLocaleString();
+                      return <VersionRow key={i} v={v} label={label} allComponents={allComponents} onRestore={restoreVersion} />;
+                    })}
+                  </div>
                 )}
               </div>
             )}

@@ -14,6 +14,7 @@ async def lifespan(app: FastAPI):
     db.materials.create_index("name", unique=True)
     db.component_schemas.create_index("name", unique=True)
     db.material_schemas.create_index("name", unique=True)
+    db.material_versions.create_index("material_id")
     yield
 
 
