@@ -11,9 +11,14 @@ router = APIRouter()
 
 class ComponentRatio(BaseModel):
     component_id: int
-    ratio: float  # percentage 0–100, must sum to 100
+    ratio: float  # percentage 0–100
     is_variable: bool = False
     alternates: List[int] = []
+
+
+class SubMaterialRatio(BaseModel):
+    material_id: int
+    ratio: float  # percentage 0–100
 
 
 class MaterialIn(BaseModel):
@@ -21,13 +26,16 @@ class MaterialIn(BaseModel):
     description: Optional[str] = None
     density: Optional[float] = None  # g/mL
     components: List[ComponentRatio] = []
+    sub_materials: List[SubMaterialRatio] = []
     schema_values: Optional[dict] = None
     variant_of: Optional[int] = None
+    archived: bool = False
 
 
 def _validate(db, payload: MaterialIn):
-    if payload.components:
-        total = sum(c.ratio for c in payload.components)
+    has_entries = payload.components or payload.sub_materials
+    if has_entries:
+        total = sum(c.ratio for c in payload.components) + sum(s.ratio for s in payload.sub_materials)
         if abs(total - 100.0) > 0.01:
             raise HTTPException(
                 status_code=422,
@@ -36,6 +44,9 @@ def _validate(db, payload: MaterialIn):
         for c in payload.components:
             if not db.material_components.find_one({"_id": c.component_id}):
                 raise HTTPException(status_code=404, detail=f"Component {c.component_id} not found")
+        for s in payload.sub_materials:
+            if not db.materials.find_one({"_id": s.material_id}):
+                raise HTTPException(status_code=404, detail=f"Sub-material {s.material_id} not found")
 
 
 @router.get("/")
@@ -51,15 +62,38 @@ def create_material(payload: MaterialIn):
         raise HTTPException(status_code=409, detail=f"Material '{payload.name}' already exists")
     _validate(db, payload)
     doc = {
-        "_id":          next_id("materials"),
-        "name":         payload.name,
-        "description":  payload.description,
-        "density":      payload.density,
-        "components":   [c.model_dump() for c in payload.components],
+        "_id":           next_id("materials"),
+        "name":          payload.name,
+        "description":   payload.description,
+        "density":       payload.density,
+        "components":    [c.model_dump() for c in payload.components],
+        "sub_materials": [s.model_dump() for s in payload.sub_materials],
         "schema_values": payload.schema_values or {},
-        "variant_of":   payload.variant_of,
-        "created_at":   datetime.utcnow(),
+        "variant_of":    payload.variant_of,
+        "archived":      payload.archived,
+        "created_at":    datetime.utcnow(),
     }
+    db.materials.insert_one(doc)
+    return doc_to_dict(doc)
+
+
+@router.post("/{material_id}/duplicate")
+def duplicate_material(material_id: int):
+    db = get_db()
+    original = db.materials.find_one({"_id": material_id})
+    if not original:
+        raise HTTPException(status_code=404, detail="Material not found")
+    base_name = original["name"]
+    candidate = f"Copy of {base_name}"
+    counter = 2
+    while db.materials.find_one({"name": candidate}):
+        candidate = f"Copy of {base_name} ({counter})"
+        counter += 1
+    doc = {k: v for k, v in original.items() if k not in ("_id", "created_at")}
+    doc["_id"] = next_id("materials")
+    doc["name"] = candidate
+    doc["archived"] = False
+    doc["created_at"] = datetime.utcnow()
     db.materials.insert_one(doc)
     return doc_to_dict(doc)
 
@@ -81,8 +115,10 @@ def update_material(material_id: int, payload: MaterialIn, request: Request):
             "description":   payload.description,
             "density":       payload.density,
             "components":    [c.model_dump() for c in payload.components],
+            "sub_materials": [s.model_dump() for s in payload.sub_materials],
             "schema_values": payload.schema_values or {},
             "variant_of":    payload.variant_of,
+            "archived":      payload.archived,
         }},
     )
     updated = db.materials.find_one({"_id": material_id})

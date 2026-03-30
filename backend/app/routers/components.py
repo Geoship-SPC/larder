@@ -15,6 +15,7 @@ class ComponentIn(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     schema_values: Optional[dict] = None
+    archived: bool = False
 
 
 @router.get("/")
@@ -34,6 +35,7 @@ def create_component(payload: ComponentIn):
         "description":  payload.description,
         "category":     payload.category or None,
         "schema_values": payload.schema_values or {},
+        "archived":     payload.archived,
         "documents":    [],
         "created_at":   datetime.utcnow(),
     }
@@ -52,7 +54,7 @@ def update_component(component_id: int, payload: ComponentIn):
         raise HTTPException(status_code=409, detail=f"Component '{payload.name}' already exists")
     db.material_components.update_one(
         {"_id": component_id},
-        {"$set": {"name": payload.name, "description": payload.description, "category": payload.category or None, "schema_values": payload.schema_values or {}}},
+        {"$set": {"name": payload.name, "description": payload.description, "category": payload.category or None, "schema_values": payload.schema_values or {}, "archived": payload.archived}},
     )
     return doc_to_dict(db.material_components.find_one({"_id": component_id}))
 
@@ -77,6 +79,13 @@ def delete_component(component_id: int):
             pass
     db.material_components.delete_one({"_id": component_id})
     return {"ok": True}
+
+
+@router.get("/{component_id}/usages")
+def get_component_usages(component_id: int):
+    db = get_db()
+    mats = list(db.materials.find({"components.component_id": component_id}, {"_id": 1, "name": 1}))
+    return [{"id": doc["_id"], "name": doc["name"]} for doc in mats]
 
 
 @router.post("/{component_id}/documents")
