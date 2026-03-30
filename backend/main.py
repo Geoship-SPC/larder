@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import database
-from app.routers import components, materials
+from app.routers import components, materials, component_schemas
 
 
 @asynccontextmanager
@@ -12,6 +12,7 @@ async def lifespan(app: FastAPI):
     db = database.get_db()
     db.material_components.create_index("name", unique=True)
     db.materials.create_index("name", unique=True)
+    db.component_schemas.create_index("name", unique=True)
     yield
 
 
@@ -24,8 +25,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(components.router, prefix="/api/components", tags=["components"])
-app.include_router(materials.router,  prefix="/api/materials",  tags=["materials"])
+app.include_router(components.router,        prefix="/api/components",        tags=["components"])
+app.include_router(materials.router,         prefix="/api/materials",         tags=["materials"])
+app.include_router(component_schemas.router, prefix="/api/component-schemas", tags=["component-schemas"])
 
 
 @app.get("/api/me")

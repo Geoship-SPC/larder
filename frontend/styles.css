@@ -212,6 +212,33 @@ textarea { resize: vertical; }
 .empty { color: var(--geo-text-muted); font-style: italic; padding: 20px; text-align: center; }
 .error-msg { color: #b84a3a; font-size: 12px; margin-top: 4px; }
 
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.layout-sidebar {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+  padding-top: 1rem;
+}
+
+/* ── geo-btn-outline ─────────────────────────────────────────────────────── */
+.geo-btn-outline {
+  background: transparent; color: var(--geo-green-stone);
+  border: 1px solid var(--geo-green-stone); border-radius: var(--geo-radius-md);
+  padding: 0.5rem 1.25rem; font-size: 0.85rem; font-weight: 500;
+  font-family: var(--geo-font); cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.geo-btn-outline:hover { background: var(--geo-green-stone); color: var(--geo-white); }
+
+/* ── Extra form rows ─────────────────────────────────────────────────────── */
+.form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ── Meta label ──────────────────────────────────────────────────────────── */
+.meta-label {
+  font-size: 11px; color: var(--geo-text-muted);
+  font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+}
+
 /* ── Help drawer ─────────────────────────────────────────────────────────── */
 .help-drawer {
   position: absolute; top: 0; right: 0; bottom: 0;

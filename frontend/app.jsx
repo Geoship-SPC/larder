@@ -78,6 +78,45 @@ const TABS = [
     ],
   },
   {
+    id: 'component-schemas',
+    label: '🏷 Component Schemas',
+    desc: 'Define reusable property templates for component types.',
+    help: [
+      {
+        heading: 'What you\'re looking at',
+        items: [
+          'Component schemas are reusable field templates that describe what data can be recorded about a type of component.',
+          'Each schema has a name, description, and a list of typed properties (text, number, scale, pass/fail, select, etc.).',
+          'Schemas are stored in geoship_manufacturing under component_schemas.',
+        ],
+      },
+      {
+        heading: 'Creating a schema',
+        items: [
+          'Click "+ New" in the left panel.',
+          'Give the schema a name and optional description.',
+          'Click "+ Add Property" to define each field.',
+          'Set the label, type, and whether the field is required.',
+          'Number fields can have a unit label and optional min/max bounds.',
+          'Scale fields produce a 1–N rating input.',
+          'Select and multiselect fields require you to define the option list.',
+          'Click Save when done.',
+        ],
+      },
+      {
+        heading: 'Property types',
+        items: [
+          'Text — free-form text input.',
+          'Number — numeric entry with optional unit, min, and max.',
+          'Scale (1–N) — click a rating on a numeric scale.',
+          'Pass / Fail — a simple boolean checkbox.',
+          'Select (single) — choose one option from a dropdown.',
+          'Select (multi) — choose multiple options.',
+        ],
+      },
+    ],
+  },
+  {
     id: 'materials',
     label: '🧪 Materials',
     desc: 'Configure material recipes from base components with mass ratios and density.',
@@ -106,8 +145,8 @@ const TABS = [
         heading: 'Volume calculator',
         items: [
           'After saving a material with density and components, scroll down to the Volume Calculator section.',
-          'Enter a volume in mL to compute the required mass of each component.',
-          'Formula: Total mass (g) = Volume (mL) × Density (g/mL)',
+          'Enter a volume (gallons by default, or switch to L or mL) to compute the required mass of each component.',
+          'Formula: Total mass (g) = Volume (converted to mL) × Density (g/mL)',
           'Each component mass = Total mass × (component ratio / 100)',
           'The table updates live as you type.',
         ],
@@ -366,6 +405,7 @@ function MaterialsPage({ isActive }) {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [volume, setVolume] = React.useState('');
+  const [volUnit, setVolUnit] = React.useState('gal');
 
   const selected = selectedId === 'new' ? 'new' : (materials.find(m => m.id === selectedId) || null);
 
@@ -456,10 +496,12 @@ function MaterialsPage({ isActive }) {
 
   // Volume calculator — uses saved material data
   const savedMat = selected && selected !== 'new' ? selected : null;
+  const VOL_TO_ML = { gal: 3785.41, L: 1000, mL: 1 };
   const volNum = parseFloat(volume);
+  const volMl = !isNaN(volNum) && volNum > 0 ? volNum * VOL_TO_ML[volUnit] : null;
   const densityNum = savedMat ? parseFloat(savedMat.density) : NaN;
-  const totalMass = (!isNaN(volNum) && volNum > 0 && !isNaN(densityNum) && densityNum > 0)
-    ? volNum * densityNum
+  const totalMass = (volMl != null && !isNaN(densityNum) && densityNum > 0)
+    ? volMl * densityNum
     : null;
 
   return (
@@ -563,18 +605,25 @@ function MaterialsPage({ isActive }) {
                 <p style={{ fontSize: 12, color: 'var(--geo-text-muted)', marginBottom: 14 }}>
                   Enter a volume to compute the required mass of each component.
                 </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                  <div style={{ position: 'relative', width: 140 }}>
-                    <input
-                      type="number" min="0" step="any"
-                      value={volume}
-                      onChange={e => setVolume(e.target.value)}
-                      className="geo-input"
-                      placeholder="0"
-                      style={{ paddingRight: 32 }}
-                    />
-                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--geo-text-muted)', pointerEvents: 'none' }}>mL</span>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                  <input
+                    type="number" min="0" step="any"
+                    value={volume}
+                    onChange={e => setVolume(e.target.value)}
+                    className="geo-input"
+                    placeholder="0"
+                    style={{ width: 120 }}
+                  />
+                  <select
+                    value={volUnit}
+                    onChange={e => setVolUnit(e.target.value)}
+                    className="geo-input"
+                    style={{ width: 70 }}
+                  >
+                    <option value="gal">gal</option>
+                    <option value="L">L</option>
+                    <option value="mL">mL</option>
+                  </select>
                   <span style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>
                     × {savedMat.density} g/mL
                     {totalMass != null && (
@@ -621,6 +670,284 @@ function MaterialsPage({ isActive }) {
           </div>
         )}
       </MasterDetail>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ComponentSchemasPage
+// ---------------------------------------------------------------------------
+const EMPTY_PROP_FORM = { key: '', label: '', type: 'text', required: false, unit: '', min: '', max: '', scale_max: '5', options: [], newOption: '' };
+
+function ComponentSchemasPage({ isActive }) {
+  const [schemas, setSchemas]         = React.useState([]);
+  const [selected, setSelected]       = React.useState(null); // null | schema object
+  const [form, setForm]               = React.useState(null); // null = no editor open
+  const [addPropForm, setAddPropForm] = React.useState(null);
+  const [saving, setSaving]           = React.useState(false);
+
+  React.useEffect(() => { if (isActive) load(); }, [isActive]);
+
+  async function load() {
+    try { setSchemas(await apiFetch('/component-schemas/')); }
+    catch (e) { alert(e.message); }
+  }
+
+  function startNew() {
+    setSelected(null);
+    setForm({ name: '', description: '', properties: [] });
+    setAddPropForm(null);
+  }
+
+  function startEdit(schema) {
+    setSelected(schema);
+    setForm({ ...schema, properties: schema.properties.map(p => ({ ...p })) });
+    setAddPropForm(null);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { alert('Schema name is required.'); return; }
+    setSaving(true);
+    try {
+      let result;
+      if (selected) {
+        result = await apiFetch(`/component-schemas/${selected.id}`, { method: 'PUT', body: JSON.stringify(form) });
+        setSchemas(prev => prev.map(s => s.id === result.id ? result : s).sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        result = await apiFetch('/component-schemas/', { method: 'POST', body: JSON.stringify(form) });
+        setSchemas(prev => [...prev, result].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+      setSelected(result);
+      setForm({ ...result, properties: result.properties.map(p => ({ ...p })) });
+    } catch (e) { alert(e.message); }
+    setSaving(false);
+  }
+
+  async function handleDelete() {
+    if (!selected || !confirm(`Delete schema "${selected.name}"?`)) return;
+    try {
+      await apiFetch(`/component-schemas/${selected.id}`, { method: 'DELETE' });
+      setSchemas(prev => prev.filter(s => s.id !== selected.id));
+      setSelected(null);
+      setForm(null);
+    } catch (e) { alert(e.message); }
+  }
+
+  function confirmAddProp() {
+    if (!addPropForm.label.trim()) { alert('Label is required.'); return; }
+    const autoKey = addPropForm.label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const key = addPropForm.key.trim() || autoKey;
+    if (form.properties.some(p => p.key === key)) { alert(`Key "${key}" already exists.`); return; }
+    const prop = { key, label: addPropForm.label.trim(), type: addPropForm.type, required: addPropForm.required };
+    if (addPropForm.type === 'number') {
+      if (addPropForm.unit)  prop.unit = addPropForm.unit;
+      if (addPropForm.min !== '') prop.min = parseFloat(addPropForm.min);
+      if (addPropForm.max !== '') prop.max = parseFloat(addPropForm.max);
+    }
+    if (addPropForm.type === 'scale') prop.scale_max = parseInt(addPropForm.scale_max) || 5;
+    if (addPropForm.type === 'select' || addPropForm.type === 'multiselect') prop.options = addPropForm.options;
+    setForm(f => ({ ...f, properties: [...f.properties, prop] }));
+    setAddPropForm(null);
+  }
+
+  return (
+    <div className="geo-container layout-sidebar">
+
+      {/* Left: schema list */}
+      <div className="geo-card" style={{ alignSelf: 'start' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 style={{ margin: 0 }}>Schemas</h2>
+          <button className="geo-btn" onClick={startNew}>+ New</button>
+        </div>
+        {schemas.length === 0
+          ? <p className="empty">No schemas yet.</p>
+          : schemas.map(s => (
+            <div key={s.id} onClick={() => startEdit(s)} style={{
+              padding: '10px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 4,
+              background: selected?.id === s.id ? 'var(--geo-sand)' : 'transparent',
+              border: '1px solid ' + (selected?.id === s.id ? 'var(--geo-border-light)' : 'transparent'),
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 2 }}>
+                {s.properties?.length || 0} {s.properties?.length === 1 ? 'property' : 'properties'}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+      {/* Right: editor */}
+      {form ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Info card */}
+          <div className="geo-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0 }}>{selected ? 'Edit Schema' : 'New Schema'}</h2>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {selected && <button className="btn btn-danger" onClick={handleDelete}>Delete</button>}
+                <button className="geo-btn" onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+            <div className="form-row cols-2">
+              <div className="form-group">
+                <label>Schema Name *</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Resin Certificate" />
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <input value={form.description || ''} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description" />
+              </div>
+            </div>
+          </div>
+
+          {/* Properties card */}
+          <div className="geo-card">
+            <h2 style={{ marginBottom: 12 }}>Properties</h2>
+
+            {form.properties.length === 0 && !addPropForm && (
+              <p className="empty" style={{ marginBottom: 12 }}>No properties yet.</p>
+            )}
+
+            {form.properties.map((prop, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--geo-sand)', borderRadius: 8, marginBottom: 6 }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{prop.label}</span>
+                  {prop.required && <span style={{ fontSize: 10, color: '#b84a3a', marginLeft: 6, fontWeight: 700, textTransform: 'uppercase' }}>required</span>}
+                  <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 2 }}>
+                    <code>{prop.key}</code> · {prop.type}
+                    {prop.unit ? ` · ${prop.unit}` : ''}
+                    {prop.scale_max ? ` · 1–${prop.scale_max}` : ''}
+                    {prop.options?.length ? ` · ${prop.options.join(', ')}` : ''}
+                    {prop.min != null ? ` · min ${prop.min}` : ''}
+                    {prop.max != null ? ` · max ${prop.max}` : ''}
+                  </div>
+                </div>
+                <button className="btn btn-danger"
+                  onClick={() => setForm(f => ({ ...f, properties: f.properties.filter((_, i) => i !== idx) }))}
+                  style={{ fontSize: 11, padding: '3px 10px' }}>Remove</button>
+              </div>
+            ))}
+
+            {addPropForm ? (
+              <div style={{ background: 'var(--geo-sand)', borderRadius: 8, padding: 14, marginTop: 8 }}>
+                <div className="meta-label" style={{ marginBottom: 10 }}>New Property</div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Label *</label>
+                    <input value={addPropForm.label} onChange={e => {
+                      const label = e.target.value;
+                      const autoKey = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                      const prevKey = addPropForm.label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                      setAddPropForm(f => ({ ...f, label, key: f.key === '' || f.key === prevKey ? autoKey : f.key }));
+                    }} placeholder="e.g. Lot Number" />
+                  </div>
+                  <div className="form-group">
+                    <label>Key <span style={{ fontWeight: 400, color: 'var(--geo-text-muted)' }}>(auto)</span></label>
+                    <input value={addPropForm.key} readOnly
+                      style={{ background: 'var(--geo-bg)', color: 'var(--geo-text-muted)', cursor: 'default' }} />
+                  </div>
+                  <div className="form-group">
+                    <label>Type</label>
+                    <select value={addPropForm.type} onChange={e => setAddPropForm(f => ({ ...f, type: e.target.value }))}>
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="scale">Scale (1–N)</option>
+                      <option value="boolean">Pass / Fail</option>
+                      <option value="select">Select (single)</option>
+                      <option value="multiselect">Select (multi)</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', paddingTop: 20 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 0 }}>
+                      <input type="checkbox" checked={addPropForm.required}
+                        onChange={e => setAddPropForm(f => ({ ...f, required: e.target.checked }))}
+                        style={{ width: 'auto' }} />
+                      Required field
+                    </label>
+                  </div>
+                </div>
+
+                {addPropForm.type === 'number' && (
+                  <div className="form-row cols-3">
+                    <div className="form-group">
+                      <label>Unit label</label>
+                      <input value={addPropForm.unit} placeholder="kg, mm, …"
+                        onChange={e => setAddPropForm(f => ({ ...f, unit: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Min</label>
+                      <input type="number" value={addPropForm.min}
+                        onChange={e => setAddPropForm(f => ({ ...f, min: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Max</label>
+                      <input type="number" value={addPropForm.max}
+                        onChange={e => setAddPropForm(f => ({ ...f, max: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
+                {addPropForm.type === 'scale' && (
+                  <div className="form-row cols-3">
+                    <div className="form-group">
+                      <label>Scale max</label>
+                      <input type="number" min="2" max="10" value={addPropForm.scale_max}
+                        onChange={e => setAddPropForm(f => ({ ...f, scale_max: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
+                {(addPropForm.type === 'select' || addPropForm.type === 'multiselect') && (
+                  <div className="form-group">
+                    <label>Options</label>
+                    {addPropForm.options.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {addPropForm.options.map(opt => (
+                          <span key={opt} style={{ background: 'var(--geo-bg)', border: '1px solid var(--geo-border-light)', borderRadius: 99, padding: '2px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {opt}
+                            <button type="button" onClick={() => setAddPropForm(f => ({ ...f, options: f.options.filter(o => o !== opt) }))}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: 0, lineHeight: 1 }}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input value={addPropForm.newOption} placeholder="Type an option and press Enter"
+                        onChange={e => setAddPropForm(f => ({ ...f, newOption: e.target.value }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && addPropForm.newOption.trim()) {
+                            e.preventDefault();
+                            setAddPropForm(f => ({ ...f, options: [...f.options, f.newOption.trim()], newOption: '' }));
+                          }
+                        }}
+                        style={{ flex: 1 }} />
+                      <button type="button" className="geo-btn-outline"
+                        onClick={() => { if (addPropForm.newOption.trim()) setAddPropForm(f => ({ ...f, options: [...f.options, f.newOption.trim()], newOption: '' })); }}>
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button className="geo-btn" onClick={confirmAddProp}>Add Property</button>
+                  <button className="geo-btn-outline" onClick={() => setAddPropForm(null)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button className="geo-btn-outline" style={{ marginTop: 4 }}
+                onClick={() => setAddPropForm({ ...EMPTY_PROP_FORM })}>
+                + Add Property
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160, color: 'var(--geo-text-muted)', fontSize: 13 }}>
+          Select a schema to edit, or create a new one.
+        </div>
+      )}
     </div>
   );
 }
@@ -732,8 +1059,9 @@ function App() {
 
       {TABS.map(t => (
         <div key={t.id} style={{ display: page === t.id ? '' : 'none' }}>
-          {t.id === 'components' && <ComponentsPage isActive={page === 'components'} />}
-          {t.id === 'materials'  && <MaterialsPage  isActive={page === 'materials'} />}
+          {t.id === 'components'        && <ComponentsPage        isActive={page === 'components'} />}
+          {t.id === 'component-schemas' && <ComponentSchemasPage  isActive={page === 'component-schemas'} />}
+          {t.id === 'materials'         && <MaterialsPage         isActive={page === 'materials'} />}
         </div>
       ))}
 
