@@ -644,6 +644,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const [versions, setVersions] = React.useState([]);
   const [versionsOpen, setVersionsOpen] = React.useState(false);
   const [versionsLoading, setVersionsLoading] = React.useState(false);
+  const [printConfig, setPrintConfig] = React.useState(null);
 
   React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
 
@@ -680,6 +681,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
     setIsDirty(false);
     setVersions([]);
     setVersionsOpen(false);
+    setPrintConfig(null);
   }
 
   function newMaterial() {
@@ -692,6 +694,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
     setIsDirty(false);
     setVersions([]);
     setVersionsOpen(false);
+    setPrintConfig(null);
   }
 
   async function loadVersions(matId) {
@@ -849,15 +852,51 @@ function MaterialsPage({ isActive, dirtyRef }) {
     ? volMl * densityNum
     : null;
 
-  function printRecipeCard() {
+  function printRecipeCard(cfg) {
     if (!savedMat) return;
     const m = savedMat;
-    const compRows = (m.components || []).map(entry => {
-      const comp = allComponents.find(c => c.id === entry.component_id);
-      const name = comp ? comp.name : `Component #${entry.component_id}`;
-      const note = entry.is_variable ? '<em>variable</em>' : '';
-      return `<tr><td>${name}</td><td style="text-align:right">${entry.ratio}%</td><td>${note}</td></tr>`;
-    }).join('');
+    const VOL_TO_ML_PRINT = { gal: 3785.41, L: 1000, mL: 1 };
+
+    const compEntries = (m.components || []).map(entry => ({
+      name: (allComponents.find(c => c.id === entry.component_id) || {}).name || `Component #${entry.component_id}`,
+      ratio: entry.ratio,
+      is_variable: entry.is_variable,
+    }));
+
+    // Ratio summary table (always shown)
+    const compRows = compEntries.map(e =>
+      `<tr><td>${e.name}</td><td style="text-align:right">${e.ratio}%</td><td>${e.is_variable ? '<em>variable</em>' : ''}</td></tr>`
+    ).join('');
+
+    // Volume range table
+    let rangeHtml = '';
+    if (m.density && compEntries.length > 0 && cfg) {
+      const start = parseFloat(cfg.start);
+      const end   = parseFloat(cfg.end);
+      const inc   = parseFloat(cfg.increment);
+      const unit  = cfg.unit;
+      const mlPerUnit = VOL_TO_ML_PRINT[unit] || 1;
+
+      if (!isNaN(start) && !isNaN(end) && !isNaN(inc) && inc > 0 && end >= start) {
+        const steps = Math.round((end - start) / inc);
+        const headerCells = compEntries.map(e => `<th style="text-align:right">${e.name} (g)</th>`).join('') + '<th style="text-align:right">Total (g)</th>';
+        const bodyRows = [];
+        for (let i = 0; i <= steps; i++) {
+          const vol = parseFloat((start + i * inc).toFixed(8));
+          const volMl = vol * mlPerUnit;
+          const totalMass = volMl * m.density;
+          const cells = compEntries.map(e =>
+            `<td style="text-align:right">${(totalMass * e.ratio / 100).toFixed(1)}</td>`
+          ).join('');
+          bodyRows.push(`<tr><td><strong>${vol} ${unit}</strong></td>${cells}<td style="text-align:right;font-weight:700">${totalMass.toFixed(1)}</td></tr>`);
+        }
+        rangeHtml = `<h2>Component Masses by Volume (${start}–${end} ${unit}, Δ${inc})</h2>
+<table>
+  <thead><tr><th>Volume</th>${headerCells}</tr></thead>
+  <tbody>${bodyRows.join('')}</tbody>
+</table>`;
+      }
+    }
 
     const schemaRows = defaultMatSchema
       ? (defaultMatSchema.properties || [])
@@ -877,16 +916,17 @@ function MaterialsPage({ isActive, dirtyRef }) {
 <meta charset="utf-8">
 <title>Recipe Card — ${m.name}</title>
 <style>
-  body { font-family: Georgia, serif; max-width: 680px; margin: 40px auto; color: #222; line-height: 1.5; }
+  body { font-family: Georgia, serif; max-width: 900px; margin: 40px auto; color: #222; line-height: 1.5; }
   h1 { font-size: 26px; margin: 0 0 4px; }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #777; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 28px 0 10px; }
   p.meta { font-size: 13px; color: #555; margin: 3px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
-  th { background: #f5f5f5; text-align: left; padding: 5px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; }
-  td { padding: 6px 10px; border-top: 1px solid #eee; vertical-align: top; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+  th { background: #f5f5f5; text-align: left; padding: 5px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; white-space: nowrap; }
+  td { padding: 5px 10px; border-top: 1px solid #eee; white-space: nowrap; }
+  tr:nth-child(even) td { background: #fafafa; }
   .print-btn { margin-bottom: 24px; padding: 8px 20px; background: #2d5a27; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
   .footer { font-size: 11px; color: #aaa; margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px; }
-  @media print { .print-btn { display: none; } body { margin: 20px; } }
+  @media print { .print-btn { display: none; } body { margin: 16px; } }
 </style>
 </head><body>
 <button class="print-btn" onclick="window.print()">🖨 Print</button>
@@ -900,6 +940,8 @@ ${compRows ? `<h2>Components</h2>
   <thead><tr><th>Component</th><th style="text-align:right">Ratio</th><th>Notes</th></tr></thead>
   <tbody>${compRows}</tbody>
 </table>` : ''}
+
+${rangeHtml}
 
 ${schemaRows ? `<h2>${defaultMatSchema ? defaultMatSchema.name : 'Properties'}</h2>
 <table><tbody>${schemaRows}</tbody></table>` : ''}
@@ -1057,13 +1099,61 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                 {saving ? 'Saving…' : 'Save'}
               </button>
               <button onClick={() => { setSelectedId(null); setError(null); setIsDirty(false); }} className="btn btn-secondary">Cancel</button>
-              {savedMat && (
-                <button onClick={printRecipeCard} className="btn btn-secondary" style={{ fontSize: 12 }}>🖨 Recipe Card</button>
+              {savedMat && !printConfig && (
+                <button
+                  onClick={() => setPrintConfig({ start: '4', end: '8', increment: '0.1', unit: 'gal' })}
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12 }}
+                >🖨 Recipe Card</button>
               )}
               {selected !== 'new' && (
                 <button onClick={deleteMaterial} className="btn btn-danger" style={{ marginLeft: 'auto' }}>Delete</button>
               )}
             </div>
+
+            {/* Recipe Card print config */}
+            {printConfig && savedMat && (
+              <div style={{ marginTop: 12, padding: '12px 14px', background: 'var(--geo-sand)', borderRadius: 8, border: '1px solid var(--geo-border-light)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--geo-forest)', marginBottom: 10 }}>🖨 Recipe Card — Volume Range</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>From</label>
+                  <input
+                    type="number" step="any" min="0"
+                    value={printConfig.start}
+                    onChange={e => setPrintConfig(c => ({ ...c, start: e.target.value }))}
+                    className="geo-input" style={{ width: 70 }}
+                  />
+                  <label style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>to</label>
+                  <input
+                    type="number" step="any" min="0"
+                    value={printConfig.end}
+                    onChange={e => setPrintConfig(c => ({ ...c, end: e.target.value }))}
+                    className="geo-input" style={{ width: 70 }}
+                  />
+                  <label style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>by</label>
+                  <input
+                    type="number" step="any" min="0.001"
+                    value={printConfig.increment}
+                    onChange={e => setPrintConfig(c => ({ ...c, increment: e.target.value }))}
+                    className="geo-input" style={{ width: 70 }}
+                  />
+                  <select
+                    value={printConfig.unit}
+                    onChange={e => setPrintConfig(c => ({ ...c, unit: e.target.value }))}
+                    className="geo-input" style={{ width: 70 }}
+                  >
+                    <option value="gal">gal</option>
+                    <option value="L">L</option>
+                    <option value="mL">mL</option>
+                  </select>
+                  <button
+                    onClick={() => { printRecipeCard(printConfig); setPrintConfig(null); }}
+                    className="btn btn-primary" style={{ fontSize: 12 }}
+                  >Generate & Print</button>
+                  <button onClick={() => setPrintConfig(null)} className="btn btn-secondary" style={{ fontSize: 12 }}>Cancel</button>
+                </div>
+              </div>
+            )}
 
             {/* Schema fields */}
             {defaultMatSchema && (
