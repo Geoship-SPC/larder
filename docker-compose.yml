@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+  larder:
+    image: ghcr.io/geoship-spc/larder:latest
+    container_name: larder
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - APP_PREFIX=/larder
+      - MONGODB_URL=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      - MANUFACTURING_DB=geoship_manufacturing
+    networks:
+      - web-proxy
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/api/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 8
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=chef-server_web-proxy"
+      - "traefik.http.services.larder.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.larder-strip.stripprefix.prefixes=/larder"
+      # Main router — requires auth
+      - "traefik.http.routers.larder.rule=PathPrefix(`/larder`)"
+      - "traefik.http.routers.larder.entrypoints=websecure"
+      - "traefik.http.routers.larder.tls=true"
+      - "traefik.http.routers.larder.priority=10"
+      - "traefik.http.routers.larder.middlewares=maitred-auth@file,larder-strip"
+      # Health router — no auth, higher priority so it matches first
+      - "traefik.http.routers.larder-health.rule=Path(`/larder/api/health`)"
+      - "traefik.http.routers.larder-health.entrypoints=websecure"
+      - "traefik.http.routers.larder-health.tls=true"
+      - "traefik.http.routers.larder-health.priority=20"
+      - "traefik.http.routers.larder-health.middlewares=larder-strip"
+      - "traefik.http.routers.larder-health.service=larder"
+      - "com.centurylinklabs.watchtower.enable=true"
+
+networks:
+  web-proxy:
+    external: true
+    name: chef-server_web-proxy
+  internal:
+    external: true
+    name: chef-server_internal

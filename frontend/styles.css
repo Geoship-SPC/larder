@@ -1,0 +1,223 @@
+/* ── styles.css ───────────────────────────────────────────────────────────────
+   App-specific styles for Larder, built on geoship.css tokens.
+   geoship.css loads first and provides all CSS custom properties and base elements.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Fallback tokens ──────────────────────────────────────────────────────────
+   Mirrors geoship.css :root. If geoship.css loads first these are overridden.
+   If it fails to load, the app still renders correctly. */
+@import url('https://fonts.googleapis.com/css2?family=Jost:wght@200;300;400;500;700&display=swap');
+
+:root {
+  --geo-ceramic:      #fcf9f0;
+  --geo-green-stone:  #505951;
+  --geo-sage:         #899a8a;
+  --geo-warm-black:   #1e1e1e;
+  --geo-charcoal:     #333333;
+  --geo-forest:       #3b4e3d;
+  --geo-deep-sage:    #778579;
+  --geo-slate-dark:   #566074;
+  --geo-slate-mid:    #6f798d;
+  --geo-golden:       #b79770;
+  --geo-sand:         #f2f0e7;
+  --geo-white:        #ffffff;
+
+  --geo-bg:                var(--geo-ceramic);
+  --geo-bg-card:           var(--geo-sand);
+  --geo-bg-card-dark:      var(--geo-forest);
+  --geo-bg-nav:            var(--geo-green-stone);
+  --geo-text-primary:      var(--geo-warm-black);
+  --geo-text-secondary:    var(--geo-charcoal);
+  --geo-text-muted:        var(--geo-deep-sage);
+  --geo-text-on-dark:      var(--geo-ceramic);
+  --geo-text-on-dark-muted:var(--geo-sage);
+  --geo-border:            var(--geo-sage);
+  --geo-border-light:      #ddd8cc;
+  --geo-accent:            var(--geo-golden);
+
+  --geo-font: 'Jost', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --geo-radius-sm: 6px;
+  --geo-radius-md: 10px;
+  --geo-radius-lg: 14px;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--geo-font);
+  background: var(--geo-bg);
+  color: var(--geo-text-primary);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── App tab bar ─────────────────────────────────────────────────────────── */
+.app-tab-bar {
+  display: flex; flex-wrap: nowrap; gap: 4px;
+  background: var(--geo-forest, #3b4e3d);
+  padding: 10px 0 0 24px;
+  border-bottom: 2px solid rgba(255,255,255,0.06);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+.app-tab {
+  display: flex; align-items: center; gap: 7px;
+  background: transparent; border: none;
+  color: #8A9AAE;
+  font-family: var(--geo-font, 'Jost', sans-serif);
+  font-size: 13px; font-weight: 500;
+  padding: 9px 28px;
+  border-radius: var(--geo-radius-sm, 6px) var(--geo-radius-sm, 6px) 0 0;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+}
+.app-tab:hover { background: rgba(255,255,255,0.06); color: #C8D4DC; }
+.app-tab.active {
+  background: var(--geo-bg, #fcf9f0);
+  color: var(--geo-deep-sage, #778579);
+  font-weight: 600;
+  border-bottom-color: var(--geo-deep-sage, #778579);
+}
+
+.geo-rainbow {
+  height: 3px;
+  background: linear-gradient(90deg, #ff6b6b, #ffa94d, #ffd43b, #69db7c, #4dabf7, #9775fa, #f06595);
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+}
+.geo-nav {
+  position: fixed; top: 3px; left: 0; right: 0; z-index: 99;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 2rem;
+  background: var(--geo-bg-nav);
+  border-bottom: 1px solid var(--geo-forest);
+}
+.geo-nav-left  { display: flex; align-items: center; gap: 0.75rem; }
+.geo-nav-right { display: flex; align-items: center; gap: 0.5rem; }
+.geo-nav-brand { font-size: 0.9rem; font-weight: 500; color: var(--geo-text-on-dark); letter-spacing: 0.05em; }
+.geo-user-name { font-size: 0.85rem; color: var(--geo-sage, #899a8a); }
+.geo-role-badge {
+  font-size: 0.7rem; font-weight: 500;
+  background: rgba(137,154,138,0.2); color: var(--geo-sage, #899a8a);
+  padding: 0.2rem 0.55rem; border-radius: var(--geo-radius-sm, 6px);
+  border: 1px solid rgba(137,154,138,0.3); text-transform: capitalize;
+}
+.geo-container   { max-width: 1100px; margin: 0 auto; padding: 0 2rem 4rem; }
+.geo-page-header { margin-bottom: 0; }
+.geo-page-header h1 {
+  font-size: 1.75rem; font-weight: 600;
+  color: var(--geo-forest, #3b4e3d);
+  margin: 0 0 0.25rem;
+}
+.geo-page-header p {
+  color: var(--geo-text-muted, #778579);
+  font-size: 0.9rem; font-weight: 300;
+  margin: 0;
+}
+.geo-card {
+  background: var(--geo-bg-card); border: 1px solid var(--geo-border-light);
+  border-radius: var(--geo-radius-lg); padding: 1.5rem; margin-bottom: 1rem;
+}
+.geo-btn {
+  background: var(--geo-green-stone); color: var(--geo-white);
+  border: none; border-radius: var(--geo-radius-md);
+  padding: 0.5rem 1.25rem; font-size: 0.85rem; font-weight: 500;
+  font-family: var(--geo-font); cursor: pointer; transition: background 0.15s;
+}
+.geo-btn:hover { background: var(--geo-forest); }
+.geo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.geo-section-label {
+  font-size: 0.65rem; text-transform: uppercase;
+  letter-spacing: 0.15em; color: var(--geo-text-muted);
+  margin: 2rem 0 0.75rem; font-weight: 500;
+  border-bottom: 1px solid var(--geo-border-light); padding-bottom: 0.5rem;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 8px 10px;
+  background: var(--geo-sand);
+  border-bottom: 1px solid var(--geo-border-light);
+  font-size: 0.7rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--geo-text-muted);
+}
+td { padding: 8px 10px; border-bottom: 1px solid var(--geo-border-light); vertical-align: middle; color: var(--geo-text-secondary); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--geo-sand); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+  padding: 6px 12px; border: none;
+  border-radius: var(--geo-radius-md);
+  cursor: pointer; font-size: 12px;
+  font-family: var(--geo-font); font-weight: 500;
+  transition: opacity .15s; white-space: nowrap;
+}
+.btn:hover { opacity: .85; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary   { background: var(--geo-forest);       color: var(--geo-ceramic); }
+.btn-danger    { background: #b84a3a;                  color: #fff; }
+.btn-secondary { background: var(--geo-border-light);  color: var(--geo-text-primary); }
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+input, select, textarea {
+  padding: 6px 10px; border: 1px solid var(--geo-border-light);
+  border-radius: var(--geo-radius-md); font-size: 13px;
+  font-family: var(--geo-font); width: 100%;
+  background: var(--geo-white); color: var(--geo-text-primary);
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--geo-deep-sage); }
+textarea { resize: vertical; }
+
+/* ── Form groups ─────────────────────────────────────────────────────────── */
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--geo-text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.08em; }
+.form-row { display: grid; gap: 12px; }
+.form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(30,30,30,.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--geo-bg-card); border-radius: var(--geo-radius-lg);
+  padding: 24px; width: 480px; max-width: 95vw;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(80,89,81,.2);
+  border: 1px solid var(--geo-border-light);
+}
+.modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: var(--geo-forest); }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* ── geo-input ───────────────────────────────────────────────────────────── */
+.geo-input {
+  padding: 6px 10px; border: 1px solid var(--geo-border-light);
+  border-radius: var(--geo-radius-md); font-size: 13px;
+  font-family: var(--geo-font); background: var(--geo-white);
+  color: var(--geo-text-primary); width: 100%;
+}
+.geo-input:focus { outline: none; border-color: var(--geo-deep-sage); }
+
+/* ── Misc ────────────────────────────────────────────────────────────────── */
+.empty { color: var(--geo-text-muted); font-style: italic; padding: 20px; text-align: center; }
+.error-msg { color: #b84a3a; font-size: 12px; margin-top: 4px; }
+
+/* ── Help drawer ─────────────────────────────────────────────────────────── */
+.help-drawer {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 360px; max-width: 90vw;
+  background: var(--geo-white);
+  box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
