@@ -38,85 +38,6 @@ function fmt(n, decimals = 2) {
 // ---------------------------------------------------------------------------
 const TABS = [
   {
-    id: 'components',
-    label: '⚗️ Components',
-    desc: 'Primitive material components used in material recipes.',
-    help: [
-      {
-        heading: 'What you\'re looking at',
-        items: [
-          'Components are raw ingredients — the building blocks of material recipes.',
-          'Each component has a name, an optional description, and can have documents attached (e.g., Safety Data Sheets).',
-          'Components are stored in the geoship_manufacturing database under material_components.',
-        ],
-      },
-      {
-        heading: 'Creating a component',
-        items: [
-          'Click "+ New" in the left panel.',
-          'Enter a unique name and an optional description.',
-          'Click Save — the component is now available to use in material recipes.',
-        ],
-      },
-      {
-        heading: 'Attaching documents',
-        items: [
-          'Select a saved component from the list.',
-          'Click "Upload Document" to attach a file — PDFs, Word docs, or any file type.',
-          'Multiple documents can be attached to the same component.',
-          'Click a document name to download it.',
-          'Click × to permanently remove a document.',
-        ],
-      },
-      {
-        heading: 'Deleting components',
-        items: [
-          'A component cannot be deleted if it is referenced by any material recipe.',
-          'Go to the Materials tab, remove the component from all recipes, then return here to delete it.',
-        ],
-      },
-    ],
-  },
-  {
-    id: 'component-schemas',
-    label: '🏷 Component Schemas',
-    desc: 'Define reusable property templates for component types.',
-    help: [
-      {
-        heading: 'What you\'re looking at',
-        items: [
-          'Component schemas are reusable field templates that describe what data can be recorded about a type of component.',
-          'Each schema has a name, description, and a list of typed properties (text, number, scale, pass/fail, select, etc.).',
-          'Schemas are stored in geoship_manufacturing under component_schemas.',
-        ],
-      },
-      {
-        heading: 'Creating a schema',
-        items: [
-          'Click "+ New" in the left panel.',
-          'Give the schema a name and optional description.',
-          'Click "+ Add Property" to define each field.',
-          'Set the label, type, and whether the field is required.',
-          'Number fields can have a unit label and optional min/max bounds.',
-          'Scale fields produce a 1–N rating input.',
-          'Select and multiselect fields require you to define the option list.',
-          'Click Save when done.',
-        ],
-      },
-      {
-        heading: 'Property types',
-        items: [
-          'Text — free-form text input.',
-          'Number — numeric entry with optional unit, min, and max.',
-          'Scale (1–N) — click a rating on a numeric scale.',
-          'Pass / Fail — a simple boolean checkbox.',
-          'Select (single) — choose one option from a dropdown.',
-          'Select (multi) — choose multiple options.',
-        ],
-      },
-    ],
-  },
-  {
     id: 'materials',
     label: '🧪 Materials',
     desc: 'Configure material recipes from base components with mass ratios and density.',
@@ -162,6 +83,46 @@ const TABS = [
     ],
   },
   {
+    id: 'components',
+    label: '⚗️ Components',
+    desc: 'Primitive material components used in material recipes.',
+    help: [
+      {
+        heading: 'What you\'re looking at',
+        items: [
+          'Components are raw ingredients — the building blocks of material recipes.',
+          'Each component has a name, an optional description, and can have documents attached (e.g., Safety Data Sheets).',
+          'Components are stored in the geoship_manufacturing database under material_components.',
+        ],
+      },
+      {
+        heading: 'Creating a component',
+        items: [
+          'Click "+ New" in the left panel.',
+          'Enter a unique name and an optional description.',
+          'Click Save — the component is now available to use in material recipes.',
+        ],
+      },
+      {
+        heading: 'Attaching documents',
+        items: [
+          'Select a saved component from the list.',
+          'Click "Upload Document" to attach a file — PDFs, Word docs, or any file type.',
+          'Multiple documents can be attached to the same component.',
+          'Click a document name to download it.',
+          'Click × to permanently remove a document.',
+        ],
+      },
+      {
+        heading: 'Deleting components',
+        items: [
+          'A component cannot be deleted if it is referenced by any material recipe.',
+          'Go to the Materials tab, remove the component from all recipes, then return here to delete it.',
+        ],
+      },
+    ],
+  },
+  {
     id: 'material-schemas',
     label: '🏷 Material Schemas',
     desc: 'Define reusable property templates for material types.',
@@ -183,6 +144,45 @@ const TABS = [
           'Set the label, type, and whether the field is required.',
           'Click Save when done.',
           'Click "☆ Set as Default" to apply the schema to all materials.',
+        ],
+      },
+      {
+        heading: 'Property types',
+        items: [
+          'Text — free-form text input.',
+          'Number — numeric entry with optional unit, min, and max.',
+          'Scale (1–N) — click a rating on a numeric scale.',
+          'Pass / Fail — a simple boolean checkbox.',
+          'Select (single) — choose one option from a dropdown.',
+          'Select (multi) — choose multiple options.',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'component-schemas',
+    label: '🏷 Component Schemas',
+    desc: 'Define reusable property templates for component types.',
+    help: [
+      {
+        heading: 'What you\'re looking at',
+        items: [
+          'Component schemas are reusable field templates that describe what data can be recorded about a type of component.',
+          'Each schema has a name, description, and a list of typed properties (text, number, scale, pass/fail, select, etc.).',
+          'Schemas are stored in geoship_manufacturing under component_schemas.',
+        ],
+      },
+      {
+        heading: 'Creating a schema',
+        items: [
+          'Click "+ New" in the left panel.',
+          'Give the schema a name and optional description.',
+          'Click "+ Add Property" to define each field.',
+          'Set the label, type, and whether the field is required.',
+          'Number fields can have a unit label and optional min/max bounds.',
+          'Scale fields produce a 1–N rating input.',
+          'Select and multiselect fields require you to define the option list.',
+          'Click Save when done.',
         ],
       },
       {
