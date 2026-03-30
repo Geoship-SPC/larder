@@ -161,6 +161,43 @@ const TABS = [
       },
     ],
   },
+  {
+    id: 'material-schemas',
+    label: '🏷 Material Schemas',
+    desc: 'Define reusable property templates for material types.',
+    help: [
+      {
+        heading: 'What you\'re looking at',
+        items: [
+          'Material schemas are reusable field templates that describe what additional data can be recorded about a material.',
+          'Each schema has a name, description, and a list of typed properties.',
+          'Schemas are stored in geoship_manufacturing under material_schemas.',
+        ],
+      },
+      {
+        heading: 'Creating a schema',
+        items: [
+          'Click "+ New" in the left panel.',
+          'Give the schema a name and optional description.',
+          'Click "+ Add Property" to define each field.',
+          'Set the label, type, and whether the field is required.',
+          'Click Save when done.',
+          'Click "☆ Set as Default" to apply the schema to all materials.',
+        ],
+      },
+      {
+        heading: 'Property types',
+        items: [
+          'Text — free-form text input.',
+          'Number — numeric entry with optional unit, min, and max.',
+          'Scale (1–N) — click a rating on a numeric scale.',
+          'Pass / Fail — a simple boolean checkbox.',
+          'Select (single) — choose one option from a dropdown.',
+          'Select (multi) — choose multiple options.',
+        ],
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -514,19 +551,27 @@ function ComponentsPage({ isActive }) {
 function MaterialsPage({ isActive }) {
   const [materials, setMaterials] = React.useState([]);
   const [allComponents, setAllComponents] = React.useState([]);
+  const [matSchemas, setMatSchemas]       = React.useState([]);
   const [selectedId, setSelectedId] = React.useState(null);
-  const [form, setForm] = React.useState({ name: '', description: '', density: '', components: [] });
+  const [form, setForm] = React.useState({ name: '', description: '', density: '', components: [], schema_values: {} });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [volume, setVolume] = React.useState('');
   const [volUnit, setVolUnit] = React.useState('gal');
+  const [variantForm, setVariantForm] = React.useState(null);
 
   const selected = selectedId === 'new' ? 'new' : (materials.find(m => m.id === selectedId) || null);
+  const defaultMatSchema = matSchemas.find(s => s.is_default) || null;
 
   async function load() {
-    const [mats, comps] = await Promise.all([apiFetch('/materials/'), apiFetch('/components/')]);
+    const [mats, comps, schemas] = await Promise.all([
+      apiFetch('/materials/'),
+      apiFetch('/components/'),
+      apiFetch('/material-schemas/'),
+    ]);
     setMaterials(mats);
     setAllComponents(comps);
+    setMatSchemas(schemas);
   }
 
   React.useEffect(() => { if (isActive) load(); }, [isActive]);
@@ -537,21 +582,43 @@ function MaterialsPage({ isActive }) {
       name: m.name,
       description: m.description || '',
       density: m.density != null ? String(m.density) : '',
-      components: (m.components || []).map(c => ({ component_id: String(c.component_id), ratio: String(c.ratio) })),
+      components: (m.components || []).map(c => ({ component_id: String(c.component_id), ratio: String(c.ratio), is_variable: c.is_variable || false, alternates: c.alternates || [] })),
+      schema_values: m.schema_values || {},
+      variant_of: m.variant_of || null,
     });
     setError(null);
     setVolume('');
+    setVariantForm(null);
   }
 
   function newMaterial() {
     setSelectedId('new');
-    setForm({ name: '', description: '', density: '', components: [] });
+    setForm({ name: '', description: '', density: '', components: [], schema_values: {}, variant_of: null });
     setError(null);
     setVolume('');
+    setVariantForm(null);
   }
 
   function addComponentEntry() {
-    setForm(f => ({ ...f, components: [...f.components, { component_id: '', ratio: '' }] }));
+    setForm(f => ({ ...f, components: [...f.components, { component_id: '', ratio: '', is_variable: false, alternates: [] }] }));
+  }
+
+  function addAlternate(idx, compId) {
+    setForm(f => {
+      const comps = [...f.components];
+      const alts = [...(comps[idx].alternates || [])];
+      if (!alts.includes(compId)) alts.push(compId);
+      comps[idx] = { ...comps[idx], alternates: alts };
+      return { ...f, components: comps };
+    });
+  }
+
+  function removeAlternate(idx, compId) {
+    setForm(f => {
+      const comps = [...f.components];
+      comps[idx] = { ...comps[idx], alternates: (comps[idx].alternates || []).filter(id => id !== compId) };
+      return { ...f, components: comps };
+    });
   }
 
   function removeComponentEntry(idx) {
@@ -574,13 +641,17 @@ function MaterialsPage({ isActive }) {
     setError(null);
     try {
       const payload = {
-        name:        form.name.trim(),
-        description: form.description.trim() || null,
-        density:     form.density !== '' ? parseFloat(form.density) : null,
-        components:  form.components.map(c => ({
+        name:          form.name.trim(),
+        description:   form.description.trim() || null,
+        density:       form.density !== '' ? parseFloat(form.density) : null,
+        components:    form.components.map(c => ({
           component_id: parseInt(c.component_id),
           ratio:        parseFloat(c.ratio),
+          is_variable:  c.is_variable || false,
+          alternates:   (c.alternates || []).map(id => parseInt(id)),
         })),
+        schema_values: form.schema_values,
+        variant_of:    form.variant_of || null,
       };
       if (selectedId === 'new') {
         const created = await apiFetch('/materials/', { method: 'POST', body: JSON.stringify(payload) });
@@ -589,7 +660,9 @@ function MaterialsPage({ isActive }) {
         setForm({
           name: created.name, description: created.description || '',
           density: created.density != null ? String(created.density) : '',
-          components: (created.components || []).map(c => ({ component_id: String(c.component_id), ratio: String(c.ratio) })),
+          components: (created.components || []).map(c => ({ component_id: String(c.component_id), ratio: String(c.ratio), is_variable: c.is_variable || false, alternates: c.alternates || [] })),
+          schema_values: created.schema_values || {},
+          variant_of: created.variant_of || null,
         });
       } else {
         await apiFetch(`/materials/${selectedId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -606,6 +679,40 @@ function MaterialsPage({ isActive }) {
       await load();
       setSelectedId(null);
     } catch (e) { alert(e.message); }
+  }
+
+  async function createVariant() {
+    if (!variantForm || !variantForm.name.trim() || !savedMat) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const components = (savedMat.components || []).map((slot, i) => ({
+        component_id: variantForm.swaps[i] !== undefined ? variantForm.swaps[i] : slot.component_id,
+        ratio:        slot.ratio,
+        is_variable:  false,
+        alternates:   [],
+      }));
+      const payload = {
+        name:          variantForm.name.trim(),
+        description:   savedMat.description || null,
+        density:       savedMat.density || null,
+        components,
+        schema_values: savedMat.schema_values || {},
+        variant_of:    savedMat.id,
+      };
+      const created = await apiFetch('/materials/', { method: 'POST', body: JSON.stringify(payload) });
+      await load();
+      setVariantForm(null);
+      setSelectedId(created.id);
+      setForm({
+        name: created.name, description: created.description || '',
+        density: created.density != null ? String(created.density) : '',
+        components: (created.components || []).map(c => ({ component_id: String(c.component_id), ratio: String(c.ratio), is_variable: false, alternates: [] })),
+        schema_values: created.schema_values || {},
+        variant_of: created.variant_of || null,
+      });
+    } catch (e) { setError(e.message); }
+    setSaving(false);
   }
 
   // Volume calculator — uses saved material data
@@ -629,7 +736,10 @@ function MaterialsPage({ isActive }) {
         onNew={newMaterial}
         renderItem={m => (
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--geo-text-primary)' }}>{m.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--geo-text-primary)' }}>{m.name}</span>
+              {m.variant_of && <span style={{ fontSize: 10, background: 'var(--geo-ceramic)', color: 'white', borderRadius: 8, padding: '1px 6px', flexShrink: 0 }}>variant</span>}
+            </div>
             <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 1 }}>
               {m.density != null ? `${m.density} g/mL` : 'No density'}
               {' · '}
@@ -641,9 +751,22 @@ function MaterialsPage({ isActive }) {
       >
         {selected && (
           <div>
-            <h3 style={{ margin: '0 0 16px', fontSize: 15, color: 'var(--geo-forest)' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 15, color: 'var(--geo-forest)' }}>
               {selected === 'new' ? 'New Material' : `Edit — ${selected.name}`}
             </h3>
+            {savedMat && savedMat.variant_of && (
+              <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', marginBottom: 12 }}>
+                Variant of:{' '}
+                <strong style={{ color: 'var(--geo-forest)' }}>
+                  {(materials.find(m => m.id === savedMat.variant_of) || {}).name || `Material #${savedMat.variant_of}`}
+                </strong>
+                <button
+                  onClick={() => { const base = materials.find(m => m.id === savedMat.variant_of); if (base) selectMaterial(base); }}
+                  style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--geo-forest)', cursor: 'pointer', fontSize: 12, padding: 0, textDecoration: 'underline' }}
+                >View base</button>
+              </div>
+            )}
+            {!savedMat?.variant_of && <div style={{ marginBottom: 12 }} />}
             {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
 
             <div className="form-row cols-2" style={{ marginBottom: 4 }}>
@@ -668,28 +791,66 @@ function MaterialsPage({ isActive }) {
               </div>
             )}
             {form.components.map((entry, idx) => (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 28px', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                <select value={entry.component_id} onChange={e => updateEntry(idx, 'component_id', e.target.value)} className="geo-input">
-                  <option value="">— Select component —</option>
-                  {allComponents.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="number" min="0" max="100" step="0.01"
-                    value={entry.ratio}
-                    onChange={e => updateEntry(idx, 'ratio', e.target.value)}
-                    className="geo-input"
-                    placeholder="0"
-                    style={{ paddingRight: 24 }}
-                  />
-                  <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--geo-text-muted)', pointerEvents: 'none' }}>%</span>
+              <div key={idx} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px auto 28px', gap: 8, alignItems: 'center' }}>
+                  <select value={entry.component_id} onChange={e => updateEntry(idx, 'component_id', e.target.value)} className="geo-input">
+                    <option value="">— Select component —</option>
+                    {allComponents.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="number" min="0" max="100" step="0.01"
+                      value={entry.ratio}
+                      onChange={e => updateEntry(idx, 'ratio', e.target.value)}
+                      className="geo-input"
+                      placeholder="0"
+                      style={{ paddingRight: 24 }}
+                    />
+                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--geo-text-muted)', pointerEvents: 'none' }}>%</span>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--geo-text-muted)', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={entry.is_variable || false}
+                      onChange={e => updateEntry(idx, 'is_variable', e.target.checked)}
+                    />
+                    Variable
+                  </label>
+                  <button
+                    onClick={() => removeComponentEntry(idx)}
+                    style={{ background: 'none', border: '1px solid var(--geo-border-light)', borderRadius: 6, cursor: 'pointer', fontSize: 14, color: 'var(--geo-text-muted)', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >×</button>
                 </div>
-                <button
-                  onClick={() => removeComponentEntry(idx)}
-                  style={{ background: 'none', border: '1px solid var(--geo-border-light)', borderRadius: 6, cursor: 'pointer', fontSize: 14, color: 'var(--geo-text-muted)', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >×</button>
+                {entry.is_variable && (
+                  <div style={{ marginLeft: 4, marginTop: 5, padding: '6px 10px', background: 'var(--geo-sand)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginBottom: 4 }}>Alternates:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                      {(entry.alternates || []).map(altId => {
+                        const altComp = allComponents.find(c => c.id === parseInt(altId));
+                        return (
+                          <span key={altId} style={{ background: 'white', border: '1px solid var(--geo-border-light)', borderRadius: 12, padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {altComp ? altComp.name : `#${altId}`}
+                            <button onClick={() => removeAlternate(idx, altId)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'var(--geo-text-muted)', fontSize: 14 }}>×</button>
+                          </span>
+                        );
+                      })}
+                      <select
+                        value=""
+                        onChange={e => { if (e.target.value) addAlternate(idx, parseInt(e.target.value)); }}
+                        className="geo-input"
+                        style={{ fontSize: 11, padding: '2px 6px', height: 'auto' }}
+                      >
+                        <option value="">+ Add alternate</option>
+                        {allComponents
+                          .filter(c => c.id !== parseInt(entry.component_id) && !(entry.alternates || []).includes(c.id))
+                          .map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                        }
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
 
@@ -712,6 +873,29 @@ function MaterialsPage({ isActive }) {
                 <button onClick={deleteMaterial} className="btn btn-danger" style={{ marginLeft: 'auto' }}>Delete</button>
               )}
             </div>
+
+            {/* Schema fields */}
+            {defaultMatSchema && (
+              <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--geo-border-light)' }}>
+                <div className="geo-section-label" style={{ marginTop: 0 }}>
+                  {defaultMatSchema.name}
+                  {defaultMatSchema.description && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>— {defaultMatSchema.description}</span>}
+                </div>
+                {(defaultMatSchema.properties || []).map(prop => (
+                  <div key={prop.key} className="form-group">
+                    <label style={{ display: 'flex', gap: 4 }}>
+                      {prop.label}
+                      {prop.required && <span style={{ color: '#b84a3a', fontWeight: 700 }}>*</span>}
+                    </label>
+                    <SchemaFieldInput
+                      prop={prop}
+                      value={form.schema_values[prop.key]}
+                      onChange={v => setForm(f => ({ ...f, schema_values: { ...f.schema_values, [prop.key]: v } }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Volume Calculator */}
             {savedMat && savedMat.density != null && (savedMat.components || []).length > 0 && (
@@ -779,6 +963,89 @@ function MaterialsPage({ isActive }) {
                       </tfoot>
                     </table>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Variants */}
+            {savedMat && !savedMat.variant_of && (
+              <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--geo-border-light)' }}>
+                <div className="geo-section-label" style={{ marginTop: 0 }}>Variants</div>
+                {materials.filter(m => m.variant_of === savedMat.id).length === 0 && !variantForm && (
+                  <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', fontStyle: 'italic', padding: '4px 0 8px' }}>No variants yet.</div>
+                )}
+                {materials.filter(m => m.variant_of === savedMat.id).map(v => {
+                  const swapDescs = (v.components || []).reduce((acc, vc, i) => {
+                    const baseSlot = (savedMat.components || [])[i];
+                    if (baseSlot && vc.component_id !== baseSlot.component_id) {
+                      const orig = allComponents.find(c => c.id === baseSlot.component_id);
+                      const repl = allComponents.find(c => c.id === vc.component_id);
+                      acc.push(`${orig ? orig.name : `#${baseSlot.component_id}`} → ${repl ? repl.name : `#${vc.component_id}`}`);
+                    }
+                    return acc;
+                  }, []);
+                  return (
+                    <div key={v.id} onClick={() => selectMaterial(v)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--geo-border-light)', cursor: 'pointer' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--geo-text-primary)' }}>{v.name}</div>
+                        {swapDescs.length > 0 && <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 2 }}>{swapDescs.join(' · ')}</div>}
+                      </div>
+                      <span style={{ fontSize: 12, color: 'var(--geo-forest)' }}>→</span>
+                    </div>
+                  );
+                })}
+                {variantForm ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--geo-forest)' }}>New Variant</div>
+                    <div className="form-group" style={{ marginBottom: 10 }}>
+                      <label>Name</label>
+                      <input
+                        value={variantForm.name}
+                        onChange={e => setVariantForm(f => ({ ...f, name: e.target.value }))}
+                        className="geo-input"
+                        placeholder="e.g. Fiber Mix A — Blue"
+                      />
+                    </div>
+                    {(savedMat.components || []).some(s => s.is_variable) ? (
+                      (savedMat.components || []).map((slot, i) => {
+                        if (!slot.is_variable) return null;
+                        const baseComp = allComponents.find(c => c.id === slot.component_id);
+                        const currentVal = variantForm.swaps[i] !== undefined ? variantForm.swaps[i] : slot.component_id;
+                        return (
+                          <div key={i} className="form-group" style={{ marginBottom: 8 }}>
+                            <label style={{ fontSize: 12 }}>{baseComp ? baseComp.name : `Component #${slot.component_id}`}</label>
+                            <select
+                              value={currentVal}
+                              onChange={e => setVariantForm(f => ({ ...f, swaps: { ...f.swaps, [i]: parseInt(e.target.value) } }))}
+                              className="geo-input"
+                            >
+                              <option value={slot.component_id}>{baseComp ? baseComp.name : `#${slot.component_id}`} (keep original)</option>
+                              {(slot.alternates || []).map(altId => {
+                                const altComp = allComponents.find(c => c.id === altId);
+                                return <option key={altId} value={altId}>{altComp ? altComp.name : `#${altId}`}</option>;
+                              })}
+                            </select>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', fontStyle: 'italic', marginBottom: 10 }}>
+                        No variable components defined. Mark components as Variable above to enable swaps.
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button onClick={createVariant} disabled={saving || !variantForm.name.trim()} className="btn btn-primary" style={{ fontSize: 12 }}>
+                        {saving ? 'Creating…' : 'Create Variant'}
+                      </button>
+                      <button onClick={() => setVariantForm(null)} className="btn btn-secondary" style={{ fontSize: 12 }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setVariantForm({ name: '', swaps: {} })}
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, marginTop: 10 }}
+                  >+ New Variant</button>
                 )}
               </div>
             )}
@@ -1084,6 +1351,288 @@ function ComponentSchemasPage({ isActive }) {
 }
 
 // ---------------------------------------------------------------------------
+// MaterialSchemasPage
+// ---------------------------------------------------------------------------
+function MaterialSchemasPage({ isActive }) {
+  const [schemas, setSchemas]         = React.useState([]);
+  const [selected, setSelected]       = React.useState(null);
+  const [form, setForm]               = React.useState(null);
+  const [addPropForm, setAddPropForm] = React.useState(null);
+  const [saving, setSaving]           = React.useState(false);
+
+  React.useEffect(() => { if (isActive) load(); }, [isActive]);
+
+  async function load() {
+    try { setSchemas(await apiFetch('/material-schemas/')); }
+    catch (e) { alert(e.message); }
+  }
+
+  function startNew() {
+    setSelected(null);
+    setForm({ name: '', description: '', properties: [] });
+    setAddPropForm(null);
+  }
+
+  function startEdit(schema) {
+    setSelected(schema);
+    setForm({ ...schema, properties: schema.properties.map(p => ({ ...p })) });
+    setAddPropForm(null);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { alert('Schema name is required.'); return; }
+    setSaving(true);
+    try {
+      let result;
+      if (selected) {
+        result = await apiFetch(`/material-schemas/${selected.id}`, { method: 'PUT', body: JSON.stringify(form) });
+        setSchemas(prev => prev.map(s => s.id === result.id ? result : s).sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        result = await apiFetch('/material-schemas/', { method: 'POST', body: JSON.stringify(form) });
+        setSchemas(prev => [...prev, result].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+      setSelected(result);
+      setForm({ ...result, properties: result.properties.map(p => ({ ...p })) });
+    } catch (e) { alert(e.message); }
+    setSaving(false);
+  }
+
+  async function handleDelete() {
+    if (!selected || !confirm(`Delete schema "${selected.name}"?`)) return;
+    try {
+      await apiFetch(`/material-schemas/${selected.id}`, { method: 'DELETE' });
+      setSchemas(prev => prev.filter(s => s.id !== selected.id));
+      setSelected(null);
+      setForm(null);
+    } catch (e) { alert(e.message); }
+  }
+
+  function confirmAddProp() {
+    if (!addPropForm.label.trim()) { alert('Label is required.'); return; }
+    const autoKey = addPropForm.label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const key = addPropForm.key.trim() || autoKey;
+    if (form.properties.some(p => p.key === key)) { alert(`Key "${key}" already exists.`); return; }
+    const prop = { key, label: addPropForm.label.trim(), type: addPropForm.type, required: addPropForm.required };
+    if (addPropForm.type === 'number') {
+      if (addPropForm.unit)  prop.unit = addPropForm.unit;
+      if (addPropForm.min !== '') prop.min = parseFloat(addPropForm.min);
+      if (addPropForm.max !== '') prop.max = parseFloat(addPropForm.max);
+    }
+    if (addPropForm.type === 'scale') prop.scale_max = parseInt(addPropForm.scale_max) || 5;
+    if (addPropForm.type === 'select' || addPropForm.type === 'multiselect') prop.options = addPropForm.options;
+    setForm(f => ({ ...f, properties: [...f.properties, prop] }));
+    setAddPropForm(null);
+  }
+
+  return (
+    <div className="geo-container layout-sidebar">
+      <div className="geo-card" style={{ alignSelf: 'start' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 style={{ margin: 0 }}>Schemas</h2>
+          <button className="geo-btn" onClick={startNew}>+ New</button>
+        </div>
+        {schemas.length === 0
+          ? <p className="empty">No schemas yet.</p>
+          : schemas.map(s => (
+            <div key={s.id} onClick={() => startEdit(s)} style={{
+              padding: '10px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 4,
+              background: selected?.id === s.id ? 'var(--geo-sand)' : 'transparent',
+              border: '1px solid ' + (selected?.id === s.id ? 'var(--geo-border-light)' : 'transparent'),
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {s.name}
+                {s.is_default && <span style={{ fontSize: 10, background: 'rgba(59,78,61,0.15)', color: 'var(--geo-forest)', borderRadius: 99, padding: '1px 7px', fontWeight: 600 }}>default</span>}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 2 }}>
+                {s.properties?.length || 0} {s.properties?.length === 1 ? 'property' : 'properties'}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+      {form ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="geo-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0 }}>{selected ? 'Edit Schema' : 'New Schema'}</h2>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {selected && <button className="btn btn-danger" onClick={handleDelete}>Delete</button>}
+                {selected && (
+                  selected.is_default
+                    ? <button className="btn btn-secondary" onClick={async () => {
+                        await apiFetch('/material-schemas/default', { method: 'DELETE' });
+                        setSchemas(prev => prev.map(s => ({ ...s, is_default: false })));
+                        setSelected(s => ({ ...s, is_default: false }));
+                      }}>★ Remove Default</button>
+                    : <button className="btn btn-secondary" onClick={async () => {
+                        await apiFetch(`/material-schemas/set-default/${selected.id}`, { method: 'POST' });
+                        setSchemas(prev => prev.map(s => ({ ...s, is_default: s.id === selected.id })));
+                        setSelected(s => ({ ...s, is_default: true }));
+                      }}>☆ Set as Default</button>
+                )}
+                <button className="geo-btn" onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+            <div className="form-row cols-2">
+              <div className="form-group">
+                <label>Schema Name *</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Mix Cert" />
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <input value={form.description || ''} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description" />
+              </div>
+            </div>
+          </div>
+
+          <div className="geo-card">
+            <h2 style={{ marginBottom: 12 }}>Properties</h2>
+            {form.properties.length === 0 && !addPropForm && (
+              <p className="empty" style={{ marginBottom: 12 }}>No properties yet.</p>
+            )}
+            {form.properties.map((prop, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--geo-sand)', borderRadius: 8, marginBottom: 6 }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{prop.label}</span>
+                  {prop.required && <span style={{ fontSize: 10, color: '#b84a3a', marginLeft: 6, fontWeight: 700, textTransform: 'uppercase' }}>required</span>}
+                  <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 2 }}>
+                    <code>{prop.key}</code> · {prop.type}
+                    {prop.unit ? ` · ${prop.unit}` : ''}
+                    {prop.scale_max ? ` · 1–${prop.scale_max}` : ''}
+                    {prop.options?.length ? ` · ${prop.options.join(', ')}` : ''}
+                    {prop.min != null ? ` · min ${prop.min}` : ''}
+                    {prop.max != null ? ` · max ${prop.max}` : ''}
+                  </div>
+                </div>
+                <button className="btn btn-danger"
+                  onClick={() => setForm(f => ({ ...f, properties: f.properties.filter((_, i) => i !== idx) }))}
+                  style={{ fontSize: 11, padding: '3px 10px' }}>Remove</button>
+              </div>
+            ))}
+
+            {addPropForm ? (
+              <div style={{ background: 'var(--geo-sand)', borderRadius: 8, padding: 14, marginTop: 8 }}>
+                <div className="meta-label" style={{ marginBottom: 10 }}>New Property</div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Label *</label>
+                    <input value={addPropForm.label} onChange={e => {
+                      const label = e.target.value;
+                      const autoKey = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                      const prevKey = addPropForm.label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                      setAddPropForm(f => ({ ...f, label, key: f.key === '' || f.key === prevKey ? autoKey : f.key }));
+                    }} placeholder="e.g. Batch Number" />
+                  </div>
+                  <div className="form-group">
+                    <label>Key <span style={{ fontWeight: 400, color: 'var(--geo-text-muted)' }}>(auto)</span></label>
+                    <input value={addPropForm.key} readOnly
+                      style={{ background: 'var(--geo-bg)', color: 'var(--geo-text-muted)', cursor: 'default' }} />
+                  </div>
+                  <div className="form-group">
+                    <label>Type</label>
+                    <select value={addPropForm.type} onChange={e => setAddPropForm(f => ({ ...f, type: e.target.value }))}>
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="scale">Scale (1–N)</option>
+                      <option value="boolean">Pass / Fail</option>
+                      <option value="select">Select (single)</option>
+                      <option value="multiselect">Select (multi)</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', paddingTop: 20 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 0 }}>
+                      <input type="checkbox" checked={addPropForm.required}
+                        onChange={e => setAddPropForm(f => ({ ...f, required: e.target.checked }))}
+                        style={{ width: 'auto' }} />
+                      Required field
+                    </label>
+                  </div>
+                </div>
+                {addPropForm.type === 'number' && (
+                  <div className="form-row cols-3">
+                    <div className="form-group">
+                      <label>Unit label</label>
+                      <input value={addPropForm.unit} placeholder="kg, mm, …"
+                        onChange={e => setAddPropForm(f => ({ ...f, unit: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Min</label>
+                      <input type="number" value={addPropForm.min}
+                        onChange={e => setAddPropForm(f => ({ ...f, min: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Max</label>
+                      <input type="number" value={addPropForm.max}
+                        onChange={e => setAddPropForm(f => ({ ...f, max: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
+                {addPropForm.type === 'scale' && (
+                  <div className="form-row cols-3">
+                    <div className="form-group">
+                      <label>Scale max</label>
+                      <input type="number" min="2" max="10" value={addPropForm.scale_max}
+                        onChange={e => setAddPropForm(f => ({ ...f, scale_max: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
+                {(addPropForm.type === 'select' || addPropForm.type === 'multiselect') && (
+                  <div className="form-group">
+                    <label>Options</label>
+                    {addPropForm.options.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {addPropForm.options.map(opt => (
+                          <span key={opt} style={{ background: 'var(--geo-bg)', border: '1px solid var(--geo-border-light)', borderRadius: 99, padding: '2px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {opt}
+                            <button type="button" onClick={() => setAddPropForm(f => ({ ...f, options: f.options.filter(o => o !== opt) }))}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: 0, lineHeight: 1 }}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input value={addPropForm.newOption} placeholder="Type an option and press Enter"
+                        onChange={e => setAddPropForm(f => ({ ...f, newOption: e.target.value }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && addPropForm.newOption.trim()) {
+                            e.preventDefault();
+                            setAddPropForm(f => ({ ...f, options: [...f.options, f.newOption.trim()], newOption: '' }));
+                          }
+                        }}
+                        style={{ flex: 1 }} />
+                      <button type="button" className="geo-btn-outline"
+                        onClick={() => { if (addPropForm.newOption.trim()) setAddPropForm(f => ({ ...f, options: [...f.options, f.newOption.trim()], newOption: '' })); }}>
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button className="geo-btn" onClick={confirmAddProp}>Add Property</button>
+                  <button className="geo-btn-outline" onClick={() => setAddPropForm(null)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button className="geo-btn-outline" style={{ marginTop: 4 }}
+                onClick={() => setAddPropForm({ ...EMPTY_PROP_FORM })}>
+                + Add Property
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160, color: 'var(--geo-text-muted)', fontSize: 13 }}>
+          Select a schema to edit, or create a new one.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // HelpDrawer
 // ---------------------------------------------------------------------------
 function HelpDrawer({ page, onClose }) {
@@ -1190,9 +1739,10 @@ function App() {
 
       {TABS.map(t => (
         <div key={t.id} style={{ display: page === t.id ? '' : 'none' }}>
-          {t.id === 'components'        && <ComponentsPage        isActive={page === 'components'} />}
-          {t.id === 'component-schemas' && <ComponentSchemasPage  isActive={page === 'component-schemas'} />}
-          {t.id === 'materials'         && <MaterialsPage         isActive={page === 'materials'} />}
+          {t.id === 'components'        && <ComponentsPage       isActive={page === 'components'} />}
+          {t.id === 'component-schemas' && <ComponentSchemasPage isActive={page === 'component-schemas'} />}
+          {t.id === 'materials'         && <MaterialsPage        isActive={page === 'materials'} />}
+          {t.id === 'material-schemas'  && <MaterialSchemasPage  isActive={page === 'material-schemas'} />}
         </div>
       ))}
 

@@ -11,6 +11,8 @@ router = APIRouter()
 class ComponentRatio(BaseModel):
     component_id: int
     ratio: float  # percentage 0–100, must sum to 100
+    is_variable: bool = False
+    alternates: List[int] = []
 
 
 class MaterialIn(BaseModel):
@@ -18,6 +20,8 @@ class MaterialIn(BaseModel):
     description: Optional[str] = None
     density: Optional[float] = None  # g/mL
     components: List[ComponentRatio] = []
+    schema_values: Optional[dict] = None
+    variant_of: Optional[int] = None
 
 
 def _validate(db, payload: MaterialIn):
@@ -46,12 +50,14 @@ def create_material(payload: MaterialIn):
         raise HTTPException(status_code=409, detail=f"Material '{payload.name}' already exists")
     _validate(db, payload)
     doc = {
-        "_id":         next_id("materials"),
-        "name":        payload.name,
-        "description": payload.description,
-        "density":     payload.density,
-        "components":  [c.model_dump() for c in payload.components],
-        "created_at":  datetime.utcnow(),
+        "_id":          next_id("materials"),
+        "name":         payload.name,
+        "description":  payload.description,
+        "density":      payload.density,
+        "components":   [c.model_dump() for c in payload.components],
+        "schema_values": payload.schema_values or {},
+        "variant_of":   payload.variant_of,
+        "created_at":   datetime.utcnow(),
     }
     db.materials.insert_one(doc)
     return doc_to_dict(doc)
@@ -69,10 +75,12 @@ def update_material(material_id: int, payload: MaterialIn):
     db.materials.update_one(
         {"_id": material_id},
         {"$set": {
-            "name":        payload.name,
-            "description": payload.description,
-            "density":     payload.density,
-            "components":  [c.model_dump() for c in payload.components],
+            "name":          payload.name,
+            "description":   payload.description,
+            "density":       payload.density,
+            "components":    [c.model_dump() for c in payload.components],
+            "schema_values": payload.schema_values or {},
+            "variant_of":    payload.variant_of,
         }},
     )
     return doc_to_dict(db.materials.find_one({"_id": material_id}))
