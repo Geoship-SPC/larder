@@ -617,42 +617,6 @@ function ComponentsPage({ isActive, dirtyRef }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// VersionRow
-// ---------------------------------------------------------------------------
-function VersionRow({ v, label, allComponents, onRestore }) {
-  const [open, setOpen] = React.useState(false);
-  const d = v.data || {};
-  return (
-    <div style={{ borderBottom: '1px solid var(--geo-border-light)', padding: '8px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          onClick={() => setOpen(o => !o)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--geo-forest)', padding: 0, textDecoration: 'underline', flexShrink: 0 }}
-        >{open ? '▲ hide' : '▼ details'}</button>
-        <span style={{ fontSize: 12, color: 'var(--geo-text-primary)', flex: 1 }}>{label}</span>
-        {v.saved_by && <span style={{ fontSize: 11, color: 'var(--geo-text-muted)', flexShrink: 0 }}>by {v.saved_by}</span>}
-        <button onClick={() => onRestore(v)} className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}>Restore</button>
-      </div>
-      {open && (
-        <div style={{ marginTop: 6, fontSize: 12, background: 'var(--geo-sand)', borderRadius: 6, padding: '8px 12px' }}>
-          {d.density != null && <div><strong>Density:</strong> {d.density} g/mL</div>}
-          {(d.components || []).length > 0 && (
-            <div style={{ marginTop: 4 }}>
-              <strong>Components:</strong>
-              <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                {(d.components || []).map((c, i) => {
-                  const comp = allComponents.find(x => x.id === c.component_id);
-                  return <li key={i} style={{ listStyle: 'disc' }}>{comp ? comp.name : `#${c.component_id}`} — {c.ratio}%</li>;
-                })}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // MaterialsPage
@@ -672,6 +636,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const [versions, setVersions] = React.useState([]);
   const [versionsOpen, setVersionsOpen] = React.useState(false);
   const [versionsLoading, setVersionsLoading] = React.useState(false);
+  const [versionIdx, setVersionIdx] = React.useState(0);
   const [printConfig, setPrintConfig] = React.useState(null);
   const [showArchived, setShowArchived] = React.useState(false);
 
@@ -716,6 +681,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
     setIsDirty(false);
     setVersions([]);
     setVersionsOpen(false);
+    setVersionIdx(0);
     setPrintConfig(null);
   }
 
@@ -729,6 +695,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
     setIsDirty(false);
     setVersions([]);
     setVersionsOpen(false);
+    setVersionIdx(0);
     setPrintConfig(null);
   }
 
@@ -737,6 +704,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
     try {
       const data = await apiFetch(`/materials/${matId}/versions`);
       setVersions(data);
+      setVersionIdx(0);
     } catch (e) { /* ignore */ }
     setVersionsLoading(false);
   }
@@ -1491,20 +1459,101 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                     if (next && versions.length === 0) loadVersions(savedMat.id);
                   }}
                 >
-                  <div className="geo-section-label" style={{ marginTop: 0 }}>Version History</div>
+                  <div className="geo-section-label" style={{ marginTop: 0 }}>
+                    Version History{versions.length > 0 ? ` (${versions.length})` : ''}
+                  </div>
                   <span style={{ fontSize: 12, color: 'var(--geo-forest)' }}>{versionsOpen ? '▲ collapse' : '▼ expand'}</span>
                 </div>
                 {versionsOpen && (
                   <div style={{ marginTop: 8 }}>
                     {versionsLoading && <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', padding: '8px 0' }}>Loading…</div>}
                     {!versionsLoading && versions.length === 0 && (
-                      <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No saved versions yet. Versions are created each time you save changes.</div>
+                      <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No saved versions yet. Versions are created each time you save.</div>
                     )}
-                    {versions.map((v, i) => {
-                      const ts = new Date(v.saved_at);
-                      const label = isNaN(ts.getTime()) ? v.saved_at : ts.toLocaleString();
-                      return <VersionRow key={i} v={v} label={label} allComponents={allComponents} onRestore={restoreVersion} />;
-                    })}
+                    {!versionsLoading && versions.length > 0 && (() => {
+                      const cur = versions[versionIdx] || versions[0];
+                      const ts = new Date(cur.saved_at);
+                      const label = isNaN(ts.getTime()) ? cur.saved_at : ts.toLocaleString();
+                      const d = cur.data || {};
+                      return (
+                        <>
+                          {/* Navigator */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0 10px', borderBottom: '1px solid var(--geo-border-light)', marginBottom: 8 }}>
+                            <button
+                              onClick={() => setVersionIdx(i => Math.min(i + 1, versions.length - 1))}
+                              disabled={versionIdx >= versions.length - 1}
+                              className="btn btn-secondary"
+                              style={{ fontSize: 12, padding: '3px 10px' }}
+                            >← older</button>
+                            <div style={{ flex: 1, textAlign: 'center' }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--geo-text-primary)' }}>
+                                {versionIdx + 1} / {versions.length}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--geo-text-muted)' }}>
+                                {label}{cur.saved_by ? ` · by ${cur.saved_by}` : ''}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setVersionIdx(i => Math.max(i - 1, 0))}
+                              disabled={versionIdx <= 0}
+                              className="btn btn-secondary"
+                              style={{ fontSize: 12, padding: '3px 10px' }}
+                            >newer →</button>
+                            <button
+                              onClick={() => restoreVersion(cur)}
+                              className="btn btn-secondary"
+                              style={{ fontSize: 12 }}
+                            >Apply</button>
+                          </div>
+
+                          {/* Details for current version */}
+                          <div style={{ fontSize: 12, background: 'var(--geo-sand)', borderRadius: 6, padding: '8px 12px', marginBottom: 8 }}>
+                            {d.density != null && <div><strong>Density:</strong> {d.density} g/mL</div>}
+                            {(d.components || []).length > 0 && (
+                              <div style={{ marginTop: d.density != null ? 4 : 0 }}>
+                                <strong>Components:</strong>
+                                <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                                  {(d.components || []).map((c, i) => {
+                                    const comp = allComponents.find(x => x.id === c.component_id);
+                                    return <li key={i} style={{ listStyle: 'disc' }}>{comp ? comp.name : `#${c.component_id}`} — {c.ratio}%</li>;
+                                  })}
+                                </ul>
+                              </div>
+                            )}
+                            {(d.sub_materials || []).length > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                <strong>Sub-materials:</strong>
+                                <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                                  {(d.sub_materials || []).map((s, i) => {
+                                    const mat = materials.find(m => m.id === s.material_id);
+                                    return <li key={i} style={{ listStyle: 'disc' }}>{mat ? mat.name : `#${s.material_id}`} — {s.ratio}%</li>;
+                                  })}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Scrollable list */}
+                          <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--geo-border-light)', borderRadius: 6 }}>
+                            {versions.map((v, i) => {
+                              const vts = new Date(v.saved_at);
+                              const vlabel = isNaN(vts.getTime()) ? v.saved_at : vts.toLocaleString();
+                              return (
+                                <div
+                                  key={i}
+                                  onClick={() => setVersionIdx(i)}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', background: i === versionIdx ? 'var(--geo-sand)' : 'transparent', borderBottom: i < versions.length - 1 ? '1px solid var(--geo-border-light)' : 'none' }}
+                                >
+                                  <span style={{ fontSize: 11, color: 'var(--geo-text-muted)', minWidth: 28, flexShrink: 0 }}>{i + 1}</span>
+                                  <span style={{ fontSize: 12, flex: 1, color: 'var(--geo-text-primary)' }}>{vlabel}</span>
+                                  {v.saved_by && <span style={{ fontSize: 11, color: 'var(--geo-text-muted)', flexShrink: 0 }}>{v.saved_by}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

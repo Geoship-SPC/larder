@@ -144,7 +144,7 @@ def list_versions(material_id: int):
     db = get_db()
     if not db.materials.find_one({"_id": material_id}):
         raise HTTPException(status_code=404, detail="Material not found")
-    versions = list(db.material_versions.find({"material_id": material_id}).sort("saved_at", -1).limit(20))
+    versions = list(db.material_versions.find({"material_id": material_id}).sort("saved_at", -1))
     return [doc_to_dict(v) for v in versions]
 
 
