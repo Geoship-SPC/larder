@@ -71,6 +71,7 @@ def create_material(payload: MaterialIn):
         "schema_values": payload.schema_values or {},
         "variant_of":    payload.variant_of,
         "archived":      payload.archived,
+        "version":       1,
         "created_at":    datetime.utcnow(),
     }
     db.materials.insert_one(doc)
@@ -93,6 +94,7 @@ def duplicate_material(material_id: int):
     doc["_id"] = next_id("materials")
     doc["name"] = candidate
     doc["archived"] = False
+    doc["version"] = 1
     doc["created_at"] = datetime.utcnow()
     db.materials.insert_one(doc)
     return doc_to_dict(doc)
@@ -110,16 +112,19 @@ def update_material(material_id: int, payload: MaterialIn, request: Request):
     _validate(db, payload)
     db.materials.update_one(
         {"_id": material_id},
-        {"$set": {
-            "name":          payload.name,
-            "description":   payload.description,
-            "density":       payload.density,
-            "components":    [c.model_dump() for c in payload.components],
-            "sub_materials": [s.model_dump() for s in payload.sub_materials],
-            "schema_values": payload.schema_values or {},
-            "variant_of":    payload.variant_of,
-            "archived":      payload.archived,
-        }},
+        {
+            "$set": {
+                "name":          payload.name,
+                "description":   payload.description,
+                "density":       payload.density,
+                "components":    [c.model_dump() for c in payload.components],
+                "sub_materials": [s.model_dump() for s in payload.sub_materials],
+                "schema_values": payload.schema_values or {},
+                "variant_of":    payload.variant_of,
+                "archived":      payload.archived,
+            },
+            "$inc": {"version": 1},
+        },
     )
     updated = db.materials.find_one({"_id": material_id})
     saved_by = None
@@ -132,6 +137,7 @@ def update_material(material_id: int, payload: MaterialIn, request: Request):
     db.material_versions.insert_one({
         "_id":         next_id("material_versions"),
         "material_id": material_id,
+        "version":     updated.get("version", 1),
         "saved_at":    datetime.utcnow(),
         "saved_by":    saved_by,
         "data":        doc_to_dict(updated),
@@ -146,6 +152,15 @@ def list_versions(material_id: int):
         raise HTTPException(status_code=404, detail="Material not found")
     versions = list(db.material_versions.find({"material_id": material_id}).sort("saved_at", -1))
     return [doc_to_dict(v) for v in versions]
+
+
+@router.get("/{material_id}/versions/by-version/{version_num}")
+def get_version_by_number(material_id: int, version_num: int):
+    db = get_db()
+    v = db.material_versions.find_one({"material_id": material_id, "version": version_num})
+    if not v:
+        raise HTTPException(status_code=404, detail=f"Version {version_num} not found for material {material_id}")
+    return doc_to_dict(v)
 
 
 @router.delete("/{material_id}")

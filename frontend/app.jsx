@@ -1027,6 +1027,7 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
               {m.density != null ? `${m.density} g/mL` : 'No density'}
               {' · '}
               {(m.components || []).length} component{(m.components || []).length !== 1 ? 's' : ''}
+              {m.version != null ? ` · v${m.version}` : ''}
             </div>
           </div>
         )}
@@ -1034,8 +1035,11 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
       >
         {selected && (
           <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: 15, color: 'var(--geo-forest)' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 15, color: 'var(--geo-forest)', display: 'flex', alignItems: 'center', gap: 8 }}>
               {selected === 'new' ? 'New Material' : `Edit — ${selected.name}`}
+              {savedMat && savedMat.version != null && (
+                <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--geo-forest)', color: 'white', borderRadius: 8, padding: '1px 7px' }}>v{savedMat.version}</span>
+              )}
             </h3>
             {savedMat && savedMat.variant_of && (
               <div style={{ fontSize: 12, color: 'var(--geo-text-muted)', marginBottom: 12 }}>
@@ -1488,6 +1492,7 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                             <div style={{ flex: 1, textAlign: 'center' }}>
                               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--geo-text-primary)' }}>
                                 {versionIdx + 1} / {versions.length}
+                                {cur.version != null && <span style={{ marginLeft: 6, fontSize: 11, background: 'var(--geo-forest)', color: 'white', borderRadius: 8, padding: '1px 6px' }}>v{cur.version}</span>}
                               </div>
                               <div style={{ fontSize: 11, color: 'var(--geo-text-muted)' }}>
                                 {label}{cur.saved_by ? ` · by ${cur.saved_by}` : ''}
@@ -1546,6 +1551,7 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                                 >
                                   <span style={{ fontSize: 11, color: 'var(--geo-text-muted)', minWidth: 28, flexShrink: 0 }}>{i + 1}</span>
                                   <span style={{ fontSize: 12, flex: 1, color: 'var(--geo-text-primary)' }}>{vlabel}</span>
+                                  {v.version != null && <span style={{ fontSize: 10, background: 'var(--geo-border-light)', borderRadius: 6, padding: '1px 5px', flexShrink: 0 }}>v{v.version}</span>}
                                   {v.saved_by && <span style={{ fontSize: 11, color: 'var(--geo-text-muted)', flexShrink: 0 }}>{v.saved_by}</span>}
                                 </div>
                               );
