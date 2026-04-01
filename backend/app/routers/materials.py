@@ -190,7 +190,7 @@ def rescue_material(material_id: int):
         raise HTTPException(status_code=404, detail="Deleted material not found")
     db.materials.update_one(
         {"_id": material_id},
-        {"$set": {"deleted": False, "archived": True}, "$unset": {"deleted_at": ""}},
+        {"$set": {"deleted": False}, "$unset": {"deleted_at": ""}},
     )
     return doc_to_dict(db.materials.find_one({"_id": material_id}))
 
