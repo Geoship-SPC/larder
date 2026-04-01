@@ -631,6 +631,8 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const [error, setError] = React.useState(null);
   const [volume, setVolume] = React.useState('');
   const [volUnit, setVolUnit] = React.useState('gal');
+  const [calcMode, setCalcMode] = React.useState('volume'); // 'volume' | 'mass'
+  const [directMass, setDirectMass] = React.useState('');
   const [variantForm, setVariantForm] = React.useState(null);
   const [isDirty, setIsDirty] = React.useState(false);
   const [versions, setVersions] = React.useState([]);
@@ -677,6 +679,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
     });
     setError(null);
     setVolume('');
+    setDirectMass('');
     setVariantForm(null);
     setIsDirty(false);
     setVersions([]);
@@ -691,6 +694,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
     setForm({ name: '', description: '', density: '', components: [], sub_materials: [], schema_values: {}, variant_of: null, archived: false });
     setError(null);
     setVolume('');
+    setDirectMass('');
     setVariantForm(null);
     setIsDirty(false);
     setVersions([]);
@@ -896,6 +900,8 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const totalMass = (volMl != null && !isNaN(densityNum) && densityNum > 0)
     ? volMl * densityNum
     : null;
+  const directMassNum = parseFloat(directMass);
+  const effectiveTotalMass = calcMode === 'volume' ? totalMass : (!isNaN(directMassNum) && directMassNum > 0 ? directMassNum : null);
 
   function printRecipeCard(cfg) {
     if (!savedMat) return;
@@ -1288,46 +1294,78 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
               </div>
             )}
 
-            {/* Volume Calculator */}
-            {savedMat && savedMat.density != null && ((savedMat.components || []).length > 0 || (savedMat.sub_materials || []).length > 0) && (
+            {/* Recipe Calculator */}
+            {savedMat && ((savedMat.components || []).length > 0 || (savedMat.sub_materials || []).length > 0) && (
               <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--geo-border-light)' }}>
-                <div className="geo-section-label" style={{ marginTop: 0 }}>Volume Calculator</div>
-                <p style={{ fontSize: 12, color: 'var(--geo-text-muted)', marginBottom: 14 }}>
-                  Enter a volume to compute the required mass of each component.
-                </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-                  <input
-                    type="number" min="0" step="any"
-                    value={volume}
-                    onChange={e => setVolume(e.target.value)}
-                    className="geo-input"
-                    placeholder="0"
-                    style={{ width: 120 }}
-                  />
-                  <select
-                    value={volUnit}
-                    onChange={e => setVolUnit(e.target.value)}
-                    className="geo-input"
-                    style={{ width: 70 }}
-                  >
-                    <option value="gal">gal</option>
-                    <option value="L">L</option>
-                    <option value="mL">mL</option>
-                  </select>
-                  <span style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>
-                    × {savedMat.density} g/mL
-                    {totalMass != null && (
-                      <> = <strong style={{ color: 'var(--geo-text-primary)' }}>{fmt(totalMass)} g total</strong></>
-                    )}
-                  </span>
+                <div className="geo-section-label" style={{ marginTop: 0 }}>Recipe Calculator</div>
+
+                {/* Mode toggle */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+                  <button
+                    onClick={() => setCalcMode('volume')}
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, ...(calcMode === 'volume' ? { background: 'var(--geo-forest)', color: 'white', borderColor: 'var(--geo-forest)' } : {}) }}
+                  >By Volume</button>
+                  <button
+                    onClick={() => setCalcMode('mass')}
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, ...(calcMode === 'mass' ? { background: 'var(--geo-forest)', color: 'white', borderColor: 'var(--geo-forest)' } : {}) }}
+                  >By Mass</button>
                 </div>
 
-                {totalMass != null && (
+                {calcMode === 'volume' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                    <input
+                      type="number" min="0" step="any"
+                      value={volume}
+                      onChange={e => setVolume(e.target.value)}
+                      className="geo-input"
+                      placeholder="0"
+                      style={{ width: 120 }}
+                    />
+                    <select value={volUnit} onChange={e => setVolUnit(e.target.value)} className="geo-input" style={{ width: 70 }}>
+                      <option value="gal">gal</option>
+                      <option value="L">L</option>
+                      <option value="mL">mL</option>
+                    </select>
+                    {savedMat.density != null ? (
+                      <span style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>
+                        × {savedMat.density} g/mL
+                        {totalMass != null && <> = <strong style={{ color: 'var(--geo-text-primary)' }}>{fmt(totalMass)} g total</strong></>}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 12, color: '#b84a3a' }}>No density set — add density to use volume mode</span>
+                    )}
+                  </div>
+                )}
+
+                {calcMode === 'mass' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                    <input
+                      type="number" min="0" step="any"
+                      value={directMass}
+                      onChange={e => setDirectMass(e.target.value)}
+                      className="geo-input"
+                      placeholder="0"
+                      style={{ width: 120 }}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>g total</span>
+                    {effectiveTotalMass != null && savedMat.density != null && (
+                      <span style={{ fontSize: 12, color: 'var(--geo-text-muted)' }}>
+                        ≈ <strong style={{ color: 'var(--geo-text-primary)' }}>{fmt(effectiveTotalMass / (savedMat.density * VOL_TO_ML['gal']), 3)} gal</strong>
+                        {' / '}
+                        <strong style={{ color: 'var(--geo-text-primary)' }}>{fmt(effectiveTotalMass / savedMat.density / 1000, 2)} L</strong>
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {effectiveTotalMass != null && (
                   <div style={{ overflowX: 'auto' }}>
                     <table>
                       <thead>
                         <tr>
-                          <th style={thS}>Component</th>
+                          <th style={thS}>Ingredient</th>
                           <th style={{ ...thS, textAlign: 'right' }}>Ratio</th>
                           <th style={{ ...thS, textAlign: 'right' }}>Mass (g)</th>
                         </tr>
@@ -1335,7 +1373,7 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                       <tbody>
                         {(savedMat.components || []).map((entry, i) => {
                           const comp = allComponents.find(c => c.id === entry.component_id);
-                          const mass = totalMass * (entry.ratio / 100);
+                          const mass = effectiveTotalMass * (entry.ratio / 100);
                           return (
                             <tr key={i}>
                               <td style={tdS}>{comp ? comp.name : `Component #${entry.component_id}`}</td>
@@ -1346,7 +1384,7 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                         })}
                         {(savedMat.sub_materials || []).map((entry, i) => {
                           const mat = materials.find(m => m.id === entry.material_id);
-                          const mass = totalMass * (entry.ratio / 100);
+                          const mass = effectiveTotalMass * (entry.ratio / 100);
                           return (
                             <tr key={`sub-${i}`}>
                               <td style={tdS}>{mat ? mat.name : `Material #${entry.material_id}`} <span style={{ fontSize: 10, color: 'var(--geo-text-muted)' }}>(sub)</span></td>
@@ -1360,7 +1398,7 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                         <tr style={{ background: 'var(--geo-sand)' }}>
                           <td style={{ ...tdS, fontWeight: 700, borderTop: '2px solid var(--geo-border-light)' }}>Total</td>
                           <td style={{ ...tdS, textAlign: 'right', fontWeight: 700, borderTop: '2px solid var(--geo-border-light)', color: 'var(--geo-text-muted)' }}>100%</td>
-                          <td style={{ ...tdS, textAlign: 'right', fontWeight: 700, borderTop: '2px solid var(--geo-border-light)' }}>{fmt(totalMass)}</td>
+                          <td style={{ ...tdS, textAlign: 'right', fontWeight: 700, borderTop: '2px solid var(--geo-border-light)' }}>{fmt(effectiveTotalMass)}</td>
                         </tr>
                       </tfoot>
                     </table>
