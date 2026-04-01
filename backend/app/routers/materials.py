@@ -44,7 +44,25 @@ class StatusTransitionIn(BaseModel):
     to_status: str
 
 
-def _validate(db, payload: MaterialIn):
+def _has_cycle(db, material_id: int, proposed_sub_ids: list) -> bool:
+    """Return True if any proposed sub-material transitively references material_id."""
+    visited = set()
+    queue = list(proposed_sub_ids)
+    while queue:
+        current = queue.pop()
+        if current == material_id:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        mat = db.materials.find_one({"_id": current}, {"sub_materials": 1})
+        if mat:
+            for s in mat.get("sub_materials", []):
+                queue.append(s["material_id"])
+    return False
+
+
+def _validate(db, payload: MaterialIn, material_id: int = None):
     has_entries = payload.components or payload.sub_materials
     if has_entries:
         total = sum(c.ratio for c in payload.components) + sum(s.ratio for s in payload.sub_materials)
@@ -59,6 +77,12 @@ def _validate(db, payload: MaterialIn):
         for s in payload.sub_materials:
             if not db.materials.find_one({"_id": s.material_id}):
                 raise HTTPException(status_code=404, detail=f"Sub-material {s.material_id} not found")
+    if material_id is not None and payload.sub_materials:
+        sub_ids = [s.material_id for s in payload.sub_materials]
+        if material_id in sub_ids:
+            raise HTTPException(status_code=422, detail="A material cannot be a sub-material of itself")
+        if _has_cycle(db, material_id, sub_ids):
+            raise HTTPException(status_code=422, detail="Adding this sub-material would create a circular dependency")
 
 
 @router.get("/")
@@ -129,7 +153,7 @@ def update_material(material_id: int, payload: MaterialIn, request: Request):
     clash = db.materials.find_one({"name": payload.name, "_id": {"$ne": material_id}})
     if clash:
         raise HTTPException(status_code=409, detail=f"Material '{payload.name}' already exists")
-    _validate(db, payload)
+    _validate(db, payload, material_id=material_id)
     db.materials.update_one(
         {"_id": material_id},
         {
