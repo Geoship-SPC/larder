@@ -21,7 +21,13 @@ class ComponentIn(BaseModel):
 @router.get("/")
 def list_components():
     db = get_db()
-    return [doc_to_dict(d) for d in db.material_components.find().sort("name", 1)]
+    return [doc_to_dict(d) for d in db.material_components.find({"deleted": {"$ne": True}}).sort("name", 1)]
+
+
+@router.get("/deleted")
+def list_deleted_components():
+    db = get_db()
+    return [doc_to_dict(d) for d in db.material_components.find({"deleted": True}).sort("deleted_at", -1)]
 
 
 @router.post("/")
@@ -65,12 +71,45 @@ def delete_component(component_id: int):
     existing = db.material_components.find_one({"_id": component_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Component not found")
-    used = db.materials.find_one({"components.component_id": component_id})
+    used = db.materials.find_one({"components.component_id": component_id, "deleted": {"$ne": True}})
     if used:
         raise HTTPException(
             status_code=409,
             detail=f"Component is used in material '{used['name']}' — remove it from all materials first",
         )
+    db.material_components.update_one(
+        {"_id": component_id},
+        {"$set": {"deleted": True, "deleted_at": datetime.utcnow()}},
+    )
+    return {"ok": True}
+
+
+class RescueComponentIn(BaseModel):
+    name: Optional[str] = None
+
+
+@router.post("/{component_id}/rescue")
+def rescue_component(component_id: int, payload: RescueComponentIn = RescueComponentIn()):
+    db = get_db()
+    existing = db.material_components.find_one({"_id": component_id, "deleted": True})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Deleted component not found")
+    name = payload.name.strip() if payload.name else existing["name"]
+    if db.material_components.find_one({"name": name, "_id": {"$ne": component_id}, "deleted": {"$ne": True}}):
+        raise HTTPException(status_code=409, detail=f"Component '{name}' already exists")
+    db.material_components.update_one(
+        {"_id": component_id},
+        {"$set": {"deleted": False, "name": name}, "$unset": {"deleted_at": ""}},
+    )
+    return doc_to_dict(db.material_components.find_one({"_id": component_id}))
+
+
+@router.delete("/{component_id}/purge")
+def purge_component(component_id: int):
+    db = get_db()
+    existing = db.material_components.find_one({"_id": component_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Component not found")
     fs = gridfs.GridFS(db)
     for doc_ref in existing.get("documents", []):
         try:
@@ -84,7 +123,7 @@ def delete_component(component_id: int):
 @router.get("/{component_id}/usages")
 def get_component_usages(component_id: int):
     db = get_db()
-    mats = list(db.materials.find({"components.component_id": component_id}, {"_id": 1, "name": 1}))
+    mats = list(db.materials.find({"components.component_id": component_id, "deleted": {"$ne": True}}, {"_id": 1, "name": 1}))
     return [{"id": doc["_id"], "name": doc["name"]} for doc in mats]
 
 

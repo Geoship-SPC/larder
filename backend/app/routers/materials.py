@@ -182,15 +182,22 @@ def delete_material(material_id: int):
     return {"ok": True}
 
 
+class RescueMaterialIn(BaseModel):
+    name: Optional[str] = None
+
+
 @router.post("/{material_id}/rescue")
-def rescue_material(material_id: int):
+def rescue_material(material_id: int, payload: RescueMaterialIn = RescueMaterialIn()):
     db = get_db()
     existing = db.materials.find_one({"_id": material_id, "deleted": True})
     if not existing:
         raise HTTPException(status_code=404, detail="Deleted material not found")
+    name = payload.name.strip() if payload.name else existing["name"]
+    if db.materials.find_one({"name": name, "_id": {"$ne": material_id}, "deleted": {"$ne": True}}):
+        raise HTTPException(status_code=409, detail=f"Material '{name}' already exists")
     db.materials.update_one(
         {"_id": material_id},
-        {"$set": {"deleted": False}, "$unset": {"deleted_at": ""}},
+        {"$set": {"deleted": False, "name": name}, "$unset": {"deleted_at": ""}},
     )
     return doc_to_dict(db.materials.find_one({"_id": material_id}))
 

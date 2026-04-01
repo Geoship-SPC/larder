@@ -33,6 +33,14 @@ function fmt(n, decimals = 2) {
   return Number(n).toFixed(decimals);
 }
 
+function isSchemaFieldFilled(prop, value) {
+  if (value === undefined || value === null) return false;
+  if (prop.type === 'text' && String(value).trim() === '') return false;
+  if (prop.type === 'select' && value === '') return false;
+  if (prop.type === 'multiselect' && Array.isArray(value) && value.length === 0) return false;
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Tabs config
 // ---------------------------------------------------------------------------
@@ -338,6 +346,8 @@ function ComponentsPage({ isActive, dirtyRef }) {
   const [selectedCategory, setSelectedCategory] = React.useState(null);
   const [showArchived, setShowArchived] = React.useState(false);
   const [usages, setUsages] = React.useState([]);
+  const [deletedComponents, setDeletedComponents] = React.useState([]);
+  const [trashOpen, setTrashOpen] = React.useState(false);
   const fileInputRef = React.useRef(null);
 
   React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
@@ -353,12 +363,14 @@ function ComponentsPage({ isActive, dirtyRef }) {
     .filter(c => selectedCategory ? c.category === selectedCategory : true);
 
   async function load() {
-    const [compData, schemaData] = await Promise.all([
+    const [compData, schemaData, deletedData] = await Promise.all([
       apiFetch('/components/'),
       apiFetch('/component-schemas/'),
+      apiFetch('/components/deleted'),
     ]);
     setComponents(compData);
     setSchemas(schemaData);
+    setDeletedComponents(deletedData);
   }
 
   React.useEffect(() => { if (isActive) load(); }, [isActive]);
@@ -384,6 +396,14 @@ function ComponentsPage({ isActive, dirtyRef }) {
   async function save() {
     setSaving(true);
     setError(null);
+    if (defaultSchema) {
+      const missing = (defaultSchema.properties || []).filter(p => p.required && !isSchemaFieldFilled(p, form.schema_values[p.key]));
+      if (missing.length > 0) {
+        setError(`Required fields missing: ${missing.map(p => p.label).join(', ')}`);
+        setSaving(false);
+        return;
+      }
+    }
     try {
       const payload = { name: form.name.trim(), description: form.description.trim() || null, category: form.category.trim() || null, schema_values: form.schema_values, archived: form.archived };
       if (selectedId === 'new') {
@@ -401,12 +421,33 @@ function ComponentsPage({ isActive, dirtyRef }) {
   }
 
   async function deleteComponent() {
-    if (!confirm(`Delete component "${selected.name}"?`)) return;
+    if (!confirm(`Move "${selected.name}" to trash? You can rescue it from the trash in the left panel.`)) return;
     try {
       await apiFetch(`/components/${selectedId}`, { method: 'DELETE' });
       await load();
       setSelectedId(null);
       setIsDirty(false);
+    } catch (e) { alert(e.message); }
+  }
+
+  async function rescueComponent(id) {
+    const trashed = deletedComponents.find(c => c.id === id);
+    let name = trashed ? trashed.name : '';
+    if (components.find(c => c.name === name)) {
+      name = window.prompt(`"${name}" already exists. Enter a new name to rescue with:`, name) || '';
+      if (!name.trim()) return;
+    }
+    try {
+      await apiFetch(`/components/${id}/rescue`, { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
+      await load();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function purgeComponent(id, name) {
+    if (!confirm(`Permanently delete "${name}" and all its documents? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/components/${id}/purge`, { method: 'DELETE' });
+      await load();
     } catch (e) { alert(e.message); }
   }
 
@@ -477,6 +518,26 @@ function ComponentsPage({ isActive, dirtyRef }) {
           </div>
         )}
         emptyMsg="Select a component or create a new one."
+        listFooter={deletedComponents.length > 0 && (
+          <div style={{ borderTop: '2px solid var(--geo-border-light)' }}>
+            <div
+              onClick={() => setTrashOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 14px', cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--geo-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                🗑 Trash ({deletedComponents.length})
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--geo-text-muted)' }}>{trashOpen ? '▲' : '▼'}</span>
+            </div>
+            {trashOpen && deletedComponents.map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderTop: '1px solid var(--geo-border-light)' }}>
+                <span style={{ fontSize: 12, flex: 1, color: 'var(--geo-text-muted)', textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                <button onClick={() => rescueComponent(c.id)} className="btn btn-secondary" style={{ fontSize: 10, padding: '2px 7px', flexShrink: 0 }} title="Restore component">Rescue</button>
+                <button onClick={() => purgeComponent(c.id, c.name)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--geo-text-muted)', fontSize: 16, padding: '0 2px', lineHeight: 1, flexShrink: 0 }} title="Permanently delete">×</button>
+              </div>
+            ))}
+          </div>
+        )}
       >
         {selected && (
           <div>
@@ -798,6 +859,14 @@ function MaterialsPage({ isActive, dirtyRef }) {
   async function save() {
     setSaving(true);
     setError(null);
+    if (defaultMatSchema) {
+      const missing = (defaultMatSchema.properties || []).filter(p => p.required && !isSchemaFieldFilled(p, form.schema_values[p.key]));
+      if (missing.length > 0) {
+        setError(`Required fields missing: ${missing.map(p => p.label).join(', ')}`);
+        setSaving(false);
+        return;
+      }
+    }
     try {
       const payload = {
         name:          form.name.trim(),
@@ -850,8 +919,14 @@ function MaterialsPage({ isActive, dirtyRef }) {
   }
 
   async function rescueMaterial(id) {
+    const trashed = deletedMaterials.find(m => m.id === id);
+    let name = trashed ? trashed.name : '';
+    if (materials.find(m => m.name === name)) {
+      name = window.prompt(`"${name}" already exists. Enter a new name to rescue with:`, name) || '';
+      if (!name.trim()) return;
+    }
     try {
-      await apiFetch(`/materials/${id}/rescue`, { method: 'POST' });
+      await apiFetch(`/materials/${id}/rescue`, { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
       await load();
     } catch (e) { alert(e.message); }
   }
