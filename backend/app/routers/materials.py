@@ -52,7 +52,13 @@ def _validate(db, payload: MaterialIn):
 @router.get("/")
 def list_materials():
     db = get_db()
-    return [doc_to_dict(d) for d in db.materials.find().sort("name", 1)]
+    return [doc_to_dict(d) for d in db.materials.find({"deleted": {"$ne": True}}).sort("name", 1)]
+
+
+@router.get("/deleted")
+def list_deleted_materials():
+    db = get_db()
+    return [doc_to_dict(d) for d in db.materials.find({"deleted": True}).sort("deleted_at", -1)]
 
 
 @router.post("/")
@@ -166,7 +172,34 @@ def get_version_by_number(material_id: int, version_num: int):
 @router.delete("/{material_id}")
 def delete_material(material_id: int):
     db = get_db()
-    result = db.materials.delete_one({"_id": material_id})
-    if result.deleted_count == 0:
+    existing = db.materials.find_one({"_id": material_id})
+    if not existing:
         raise HTTPException(status_code=404, detail="Material not found")
+    db.materials.update_one(
+        {"_id": material_id},
+        {"$set": {"deleted": True, "deleted_at": datetime.utcnow()}},
+    )
+    return {"ok": True}
+
+
+@router.post("/{material_id}/rescue")
+def rescue_material(material_id: int):
+    db = get_db()
+    existing = db.materials.find_one({"_id": material_id, "deleted": True})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Deleted material not found")
+    db.materials.update_one(
+        {"_id": material_id},
+        {"$set": {"deleted": False, "archived": True}, "$unset": {"deleted_at": ""}},
+    )
+    return doc_to_dict(db.materials.find_one({"_id": material_id}))
+
+
+@router.delete("/{material_id}/purge")
+def purge_material(material_id: int):
+    db = get_db()
+    if not db.materials.find_one({"_id": material_id}):
+        raise HTTPException(status_code=404, detail="Material not found")
+    db.material_versions.delete_many({"material_id": material_id})
+    db.materials.delete_one({"_id": material_id})
     return {"ok": True}

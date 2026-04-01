@@ -203,7 +203,7 @@ const TABS = [
 // ---------------------------------------------------------------------------
 // MasterDetail
 // ---------------------------------------------------------------------------
-function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, emptyMsg, children, searchKeys = ['name'], listHeader }) {
+function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, emptyMsg, children, searchKeys = ['name'], listHeader, listFooter }) {
   const [query, setQuery] = React.useState('');
   const q = query.toLowerCase();
   const filtered = q
@@ -248,6 +248,7 @@ function MasterDetail({ title, items, selectedId, onSelect, onNew, renderItem, e
             {renderItem(item)}
           </div>
         ))}
+        {listFooter}
       </div>
       <div className="geo-card">
         {children || <div className="empty">{emptyMsg || 'Select an item or create a new one.'}</div>}
@@ -641,6 +642,8 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const [versionIdx, setVersionIdx] = React.useState(0);
   const [printConfig, setPrintConfig] = React.useState(null);
   const [showArchived, setShowArchived] = React.useState(false);
+  const [deletedMaterials, setDeletedMaterials] = React.useState([]);
+  const [trashOpen, setTrashOpen] = React.useState(false);
 
   React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
 
@@ -652,14 +655,16 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const filteredMaterials = materials.filter(m => showArchived ? true : !m.archived);
 
   async function load() {
-    const [mats, comps, schemas] = await Promise.all([
+    const [mats, comps, schemas, deleted] = await Promise.all([
       apiFetch('/materials/'),
       apiFetch('/components/'),
       apiFetch('/material-schemas/'),
+      apiFetch('/materials/deleted'),
     ]);
     setMaterials(mats);
     setAllComponents(comps);
     setMatSchemas(schemas);
+    setDeletedMaterials(deleted);
   }
 
   React.useEffect(() => { if (isActive) load(); }, [isActive]);
@@ -835,12 +840,27 @@ function MaterialsPage({ isActive, dirtyRef }) {
   }
 
   async function deleteMaterial() {
-    if (!confirm(`Delete material "${selected.name}"?`)) return;
+    if (!confirm(`Move "${selected.name}" to trash? You can rescue it from the trash in the left panel.`)) return;
     try {
       await apiFetch(`/materials/${selectedId}`, { method: 'DELETE' });
       await load();
       setSelectedId(null);
       setIsDirty(false);
+    } catch (e) { alert(e.message); }
+  }
+
+  async function rescueMaterial(id) {
+    try {
+      await apiFetch(`/materials/${id}/rescue`, { method: 'POST' });
+      await load();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function purgeMaterial(id, name) {
+    if (!confirm(`Permanently delete "${name}" and all its version history? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/materials/${id}/purge`, { method: 'DELETE' });
+      await load();
     } catch (e) { alert(e.message); }
   }
 
@@ -1038,6 +1058,35 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
           </div>
         )}
         emptyMsg="Select a material or create a new one."
+        listFooter={deletedMaterials.length > 0 && (
+          <div style={{ borderTop: '2px solid var(--geo-border-light)' }}>
+            <div
+              onClick={() => setTrashOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 14px', cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--geo-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                🗑 Trash ({deletedMaterials.length})
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--geo-text-muted)' }}>{trashOpen ? '▲' : '▼'}</span>
+            </div>
+            {trashOpen && deletedMaterials.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderTop: '1px solid var(--geo-border-light)' }}>
+                <span style={{ fontSize: 12, flex: 1, color: 'var(--geo-text-muted)', textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                <button
+                  onClick={() => rescueMaterial(m.id)}
+                  className="btn btn-secondary"
+                  style={{ fontSize: 10, padding: '2px 7px', flexShrink: 0 }}
+                  title="Restore to archived"
+                >Rescue</button>
+                <button
+                  onClick={() => purgeMaterial(m.id, m.name)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--geo-text-muted)', fontSize: 16, padding: '0 2px', lineHeight: 1, flexShrink: 0 }}
+                  title="Permanently delete"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
       >
         {selected && (
           <div>
