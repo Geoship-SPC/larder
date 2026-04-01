@@ -32,6 +32,18 @@ class MaterialIn(BaseModel):
     archived: bool = False
 
 
+ALLOWED_TRANSITIONS = {
+    "draft":      ["testing"],
+    "testing":    ["approved", "draft"],
+    "approved":   ["deprecated"],
+    "deprecated": ["draft"],
+}
+
+
+class StatusTransitionIn(BaseModel):
+    to_status: str
+
+
 def _validate(db, payload: MaterialIn):
     has_entries = payload.components or payload.sub_materials
     if has_entries:
@@ -77,6 +89,7 @@ def create_material(payload: MaterialIn):
         "schema_values": payload.schema_values or {},
         "variant_of":    payload.variant_of,
         "archived":      payload.archived,
+        "status":        "draft",
         "version":       1,
         "created_at":    datetime.utcnow(),
     }
@@ -100,6 +113,7 @@ def duplicate_material(material_id: int):
     doc["_id"] = next_id("materials")
     doc["name"] = candidate
     doc["archived"] = False
+    doc["status"] = "draft"
     doc["version"] = 1
     doc["created_at"] = datetime.utcnow()
     db.materials.insert_one(doc)
@@ -158,6 +172,23 @@ def list_versions(material_id: int):
         raise HTTPException(status_code=404, detail="Material not found")
     versions = list(db.material_versions.find({"material_id": material_id}).sort("saved_at", -1))
     return [doc_to_dict(v) for v in versions]
+
+
+@router.post("/{material_id}/transition")
+def transition_status(material_id: int, payload: StatusTransitionIn):
+    db = get_db()
+    existing = db.materials.find_one({"_id": material_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Material not found")
+    current = existing.get("status", "draft")
+    allowed = ALLOWED_TRANSITIONS.get(current, [])
+    if payload.to_status not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot transition from '{current}' to '{payload.to_status}'",
+        )
+    db.materials.update_one({"_id": material_id}, {"$set": {"status": payload.to_status}})
+    return doc_to_dict(db.materials.find_one({"_id": material_id}))
 
 
 @router.get("/{material_id}/versions/by-version/{version_num}")

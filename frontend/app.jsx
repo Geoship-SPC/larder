@@ -683,6 +683,19 @@ function ComponentsPage({ isActive, dirtyRef }) {
 // ---------------------------------------------------------------------------
 // MaterialsPage
 // ---------------------------------------------------------------------------
+const STATUS_META = {
+  draft:      { label: 'Draft',      color: '#888',    bg: '#f0f0f0' },
+  testing:    { label: 'Testing',    color: '#1565c0', bg: '#e3f2fd' },
+  approved:   { label: 'Approved',   color: '#2e7d32', bg: '#e8f5e9' },
+  deprecated: { label: 'Deprecated', color: '#b84a3a', bg: '#fdecea' },
+};
+const STATUS_TRANSITIONS = {
+  draft:      [{ to: 'testing',    label: 'Submit for Testing' }],
+  testing:    [{ to: 'approved',   label: 'Approve' }, { to: 'draft', label: 'Back to Draft' }],
+  approved:   [{ to: 'deprecated', label: 'Deprecate' }],
+  deprecated: [{ to: 'draft',      label: 'Reopen as Draft' }],
+};
+
 function MaterialsPage({ isActive, dirtyRef }) {
   const [materials, setMaterials] = React.useState([]);
   const [allComponents, setAllComponents] = React.useState([]);
@@ -705,6 +718,7 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const [showArchived, setShowArchived] = React.useState(false);
   const [deletedMaterials, setDeletedMaterials] = React.useState([]);
   const [trashOpen, setTrashOpen] = React.useState(false);
+  const [statusFilter, setStatusFilter] = React.useState(null); // null = all
 
   React.useEffect(() => { if (dirtyRef) dirtyRef.current = isDirty; }, [isDirty]);
 
@@ -713,7 +727,10 @@ function MaterialsPage({ isActive, dirtyRef }) {
   const matSchemaDrift = defaultMatSchema
     ? (defaultMatSchema.properties || []).filter(p => !(p.key in (form.schema_values || {})))
     : [];
-  const filteredMaterials = materials.filter(m => showArchived ? true : !m.archived);
+  const filteredMaterials = materials.filter(m =>
+    (showArchived ? true : !m.archived) &&
+    (statusFilter ? (m.status || 'draft') === statusFilter : true)
+  );
 
   async function load() {
     const [mats, comps, schemas, deleted] = await Promise.all([
@@ -906,6 +923,14 @@ function MaterialsPage({ isActive, dirtyRef }) {
       setIsDirty(false);
     } catch (e) { setError(e.message); }
     setSaving(false);
+  }
+
+  async function transitionStatus(toStatus) {
+    if (!savedMat) return;
+    try {
+      await apiFetch(`/materials/${savedMat.id}/transition`, { method: 'POST', body: JSON.stringify({ to_status: toStatus }) });
+      await load();
+    } catch (e) { setError(e.message); }
   }
 
   async function deleteMaterial() {
@@ -1112,6 +1137,20 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
         onNew={newMaterial}
         listHeader={(
           <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--geo-border-light)' }}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
+              {Object.entries(STATUS_META).map(([key, meta]) => (
+                <button
+                  key={key}
+                  onClick={() => setStatusFilter(f => f === key ? null : key)}
+                  style={{
+                    fontSize: 10, padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
+                    border: `1px solid ${meta.color}`,
+                    background: statusFilter === key ? meta.color : 'transparent',
+                    color: statusFilter === key ? 'white' : meta.color,
+                  }}
+                >{meta.label}</button>
+              ))}
+            </div>
             <button onClick={() => setShowArchived(a => !a)} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, border: '1px solid var(--geo-border-light)', background: showArchived ? '#b84a3a' : 'transparent', color: showArchived ? 'white' : 'var(--geo-text-muted)', cursor: 'pointer' }}>
               {showArchived ? '☑ archived' : '☐ archived'}
             </button>
@@ -1123,6 +1162,7 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--geo-text-primary)' }}>{m.name}</span>
               {m.variant_of && <span style={{ fontSize: 10, background: 'var(--geo-ceramic)', color: 'white', borderRadius: 8, padding: '1px 6px', flexShrink: 0 }}>variant</span>}
               {m.archived && <span style={{ fontSize: 10, background: '#888', color: 'white', borderRadius: 8, padding: '1px 6px', flexShrink: 0 }}>archived</span>}
+              {m.status && m.status !== 'draft' && (() => { const meta = STATUS_META[m.status]; return meta ? <span style={{ fontSize: 10, background: meta.bg, color: meta.color, borderRadius: 8, padding: '1px 6px', flexShrink: 0, border: `1px solid ${meta.color}` }}>{meta.label}</span> : null; })()}
             </div>
             <div style={{ fontSize: 11, color: 'var(--geo-text-muted)', marginTop: 1 }}>
               {m.density != null ? `${m.density} g/mL` : 'No density'}
@@ -1345,6 +1385,26 @@ ${childVariants.length > 0 ? `<h2>Variants</h2><ul style="font-size:13px;margin:
                 <button onClick={deleteMaterial} className="btn btn-danger" style={{ marginLeft: 'auto' }}>Delete</button>
               )}
             </div>
+
+            {/* Status workflow */}
+            {savedMat && (
+              <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--geo-sand)', borderRadius: 8, border: '1px solid var(--geo-border-light)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: 'var(--geo-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</span>
+                {(() => {
+                  const st = savedMat.status || 'draft';
+                  const meta = STATUS_META[st] || STATUS_META.draft;
+                  return <span style={{ fontSize: 12, fontWeight: 600, background: meta.bg, color: meta.color, border: `1px solid ${meta.color}`, borderRadius: 8, padding: '2px 10px' }}>{meta.label}</span>;
+                })()}
+                {(STATUS_TRANSITIONS[savedMat.status || 'draft'] || []).map(t => (
+                  <button
+                    key={t.to}
+                    onClick={() => transitionStatus(t.to)}
+                    className="btn btn-secondary"
+                    style={{ fontSize: 11, padding: '2px 10px' }}
+                  >{t.label}</button>
+                ))}
+              </div>
+            )}
 
             {/* Recipe Card print config */}
             {printConfig && savedMat && (
